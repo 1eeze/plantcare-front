@@ -24,7 +24,9 @@
       <button class="signup-button" @click="handleSignUp">회원가입</button>
       
       <div class="sns-login-section">
-      <p>SNS 계정으로 로그인</p>
+        <div class="sns-divider">
+          <span>SNS 계정으로 로그인</span>
+        </div>
       <div class="sns-circle-group">
 
         <!-- 구글 로그인 -->
@@ -147,6 +149,23 @@ button {
   color: #02c966;
 }
 
+.sns-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #999;
+  font-size: 0.9rem;
+  margin: 30px 0 10px;
+}
+
+.sns-divider::before,
+.sns-divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #ddd;
+  margin: 0 10px;
+}
+
 .sns-login-section {
   margin-top: 30px;
   text-align: center;
@@ -156,7 +175,7 @@ button {
   display: flex;
   justify-content: center;
   gap: 16px;
-  margin-top: 12px;
+  margin-top: 30px;
   flex-wrap: wrap;
 }
 
