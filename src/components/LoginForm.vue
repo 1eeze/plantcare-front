@@ -1,6 +1,6 @@
 <template>
     <div class="login-container">
-      <h2>어플 이름</h2>
+      <h2>Plant Care</h2>
   
       <div class="input-group">
         <input type="text" placeholder="아이디를 입력해주세요" v-model="userId" />
@@ -21,7 +21,7 @@
       </div>
   
       <button class="login-button" @click="handleLogin">로그인</button>
-      <button class="signup-button" @click="handleSignUp">회원가입</button>
+      <button class="signup-button" @click="goToSignup">회원가입</button>
       
       <div class="sns-login-section">
         <div class="sns-divider">
@@ -54,10 +54,13 @@
   
   <script setup>
   import { ref } from 'vue'
+  import { useRouter } from 'vue-router'
+
   
   const userId = ref('')
   const userPassword = ref('')
   const secureLogin = ref(false)
+  const router = useRouter()
 
   const handleGoogleLogin = () => {
   window.location.href = 'https://pkplantcare.shop/login'
@@ -68,9 +71,8 @@
     // TODO: 로그인 API 연동 또는 인증 로직 추가
   }
   
-  const handleSignUp = () => {
-    console.log('회원가입 클릭')
-    // TODO: 회원가입 화면으로 라우팅 또는 기능 실행
+  const goToSignup = () => {
+  router.push('/signup')
   }
   </script>
   
