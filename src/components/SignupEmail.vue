@@ -56,7 +56,7 @@
   
   <style scoped>
   .signup-background {
-    background-color: #f5f5f5;
+    background-color: #f2f5f5;
     min-height: 100vh;
     display: flex;
     justify-content: center;
@@ -64,8 +64,8 @@
   }
   
   .email-signup-container {
-    background-color: white;
-    width: 100%;
+    background-color: #F2F6EB;
+    width: 90%;
     max-width: 400px;
     padding: 30px;
     border-radius: 12px;

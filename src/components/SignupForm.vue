@@ -1,19 +1,57 @@
 <template>
   <div class="signup-background">
     <div class="signup-container">
-      <h1 class="title">Plant Care</h1>
+      <h2 class="logo">
+        <span class="green">P</span>lant<br />
+        <span class="green">C</span>are
+      </h2>
       <p class="subtitle">회원가입 방식을 선택해 주세요.</p>
+      
+      <div class="sns-circle-group">
 
-      <div class="sns-icons">
-        <div class="sns-icon" @click="handleSnsLogin('google')">
-          <!-- Google 아이콘 (SVG) -->
-          <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 48 48">
-            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-            <path fill="none" d="M0 0h48v48H0z"></path>
-          </svg>
+        <!-- 네이버 로그인 버튼 -->
+        <div class="sns-circle-button" @click="handleNaverLogin('naver')">
+          <button class="gsi-material-button">
+            <div class="gsi-material-button-state"></div>
+            <div class="gsi-material-button-content-wrapper">
+              <div class="gsi-material-button-icon">
+                <img class="naver-img" src="../assets/btnW_아이콘원형.png" alt="네이버" />
+              </div>
+            </div>
+          </button>
+          <span>네이버</span>
+        </div>
+
+        <!-- 카카오 로그인 버튼 -->
+        <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
+          <button class="gsi-material-button">
+            <div class="gsi-material-button-state"></div>
+            <div class="gsi-material-button-content-wrapper">
+              <div class="gsi-material-button-icon">
+                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오오" />
+              </div>
+            </div>
+          </button>
+          <span>카카오</span>
+        </div>
+
+        <!-- 구글 로그인 -->
+        <div class="sns-circle-button" @click="handleGoogleLogin('google')">
+          <button class="gsi-material-button">
+            <div class="gsi-material-button-state"></div>
+            <div class="gsi-material-button-content-wrapper">
+              <div class="gsi-material-button-icon" id="google-icon-wrapper">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" style="display: block;">
+                  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+                  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+                  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+                  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+                  <path fill="none" d="M0 0h48v48H0z"></path>
+                </svg>
+              </div>
+            </div>
+          </button>
+          <span>구글</span>
         </div>
       </div>
 
@@ -45,7 +83,7 @@ const handleAppSignup = () => {
 
 <style scoped>
 .signup-background {
-  background-color: #555; /* 어두운 회색 배경 */
+  background-color: #555;
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -53,19 +91,103 @@ const handleAppSignup = () => {
 }
 
 .signup-container {
-  background-color: #fff;
+  background-color: #fefaf0;
   padding: 40px 30px;
   border-radius: 12px;
   max-width: 400px;
-  width: 90%;
+  width: 70%;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
   text-align: center;
 }
 
-.title {
-  font-size: 28px;
-  font-weight: bold;
-  margin-bottom: 10px;
+h2 {
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.logo {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
+  font-size: 2rem;
+  line-height: 1.2;
+  color: #4C2B08;
+  text-align: center;
+}
+
+.logo .green {
+  color: #568265;
+}
+
+.sns-circle-group {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 30px;
+  flex-wrap: wrap;
+}
+
+.sns-circle-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  cursor: pointer;
+  width: 60px;
+}
+
+.gsi-material-button {
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease-in-out;
+}
+
+.gsi-material-button .gsi-material-button-icon {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gsi-material-button svg {
+  width: 100%;
+  height: 100%;
+}
+
+.naver-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+.kakao-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+#google-icon-wrapper {
+  width: 100%;
+  height: 100%;
+  padding: 11px;
+  box-sizing: border-box;
+}
+
+#google-icon-wrapper svg {
+  width: 90%;
+  height: 90%;
+  object-fit: contain;
 }
 
 .subtitle {
@@ -117,7 +239,7 @@ const handleAppSignup = () => {
 }
 
 .app-signup-button {
-  background-color: #02c966;
+  background-color: #568265;
   color: white;
   border: none;
   border-radius: 25px;
@@ -129,7 +251,7 @@ const handleAppSignup = () => {
 }
 
 .app-signup-button:hover {
-  background-color: #00b05c;
+  background-color: #568265;
 }
 
 .login-link {

@@ -1,6 +1,9 @@
 <template>
     <div class="login-container">
-      <h2>Plant Care</h2>
+      <h2 class="logo">
+        <span class="green">P</span>lant<br />
+        <span class="green">C</span>are
+      </h2>
   
       <div class="input-group">
         <input type="text" placeholder="아이디를 입력해주세요" v-model="userId" />
@@ -42,7 +45,7 @@
           <span>네이버</span>
         </div>
 
-        <!-- 카카오오 로그인 버튼 -->
+        <!-- 카카오 로그인 버튼 -->
         <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -111,6 +114,7 @@
   </script>
   
 <style scoped>
+
   .login-container {
   max-width: 400px;
   width: 90%;
@@ -125,6 +129,19 @@
 h2 {
   text-align: center;
   margin-bottom: 20px;
+}
+
+.logo {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 600;
+  font-size: 3rem;
+  line-height: 1.2;
+  color: #4C2B08;
+  text-align: center;
+}
+
+.logo .green {
+  color: #568265;
 }
 
 .input-group {
