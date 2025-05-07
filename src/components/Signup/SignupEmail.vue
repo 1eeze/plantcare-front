@@ -27,6 +27,7 @@
   
   <script setup>
   import { ref } from 'vue'
+  const emit = defineEmits(['next'])
   
   const email = ref('')
   const password = ref('')
@@ -50,7 +51,7 @@
       return
     }
     console.log('회원가입 정보:', { email: email.value, password: password.value })
-    alert('가입 완료!')
+    emit('next')
   }
   </script>
   
@@ -112,7 +113,7 @@
   }
   
   .submit-button {
-    background-color: #02c966;
+    background-color: #568265;
     color: white;
     padding: 12px;
     border: none;

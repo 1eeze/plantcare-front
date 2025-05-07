@@ -9,33 +9,33 @@
       
       <div class="sns-circle-group">
 
-        <!-- 네이버 로그인 버튼 -->
+        <!-- 네이버 가입 버튼 -->
         <div class="sns-circle-button" @click="handleNaverLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
               <div class="gsi-material-button-icon">
-                <img class="naver-img" src="../assets/btnW_아이콘원형.png" alt="네이버" />
+                <img class="naver-img" src="../../assets/btnW_아이콘원형.png" alt="네이버" />
               </div>
             </div>
           </button>
           <span>네이버</span>
         </div>
 
-        <!-- 카카오 로그인 버튼 -->
+        <!-- 카카오 가입 버튼 -->
         <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
               <div class="gsi-material-button-icon">
-                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오오" />
+                <img class="kakao-img" src="../../assets/kakao-talk.png" alt="카카오오" />
               </div>
             </div>
           </button>
           <span>카카오</span>
         </div>
 
-        <!-- 구글 로그인 -->
+        <!-- 구글 가입 버튼 -->
         <div class="sns-circle-button" @click="handleGoogleLogin('google')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -70,7 +70,17 @@
 </template>
 
 <script setup>
-const handleSnsLogin = (provider) => {
+const handleNaverLogin = (provider) => {
+  console.log(`${provider} SNS 로그인 시도`)
+  // SNS 연동 로직 추가 예정
+}
+
+const handleKakaoLogin = (provider) => {
+  console.log(`${provider} SNS 로그인 시도`)
+  // SNS 연동 로직 추가 예정
+}
+
+const handleGoogleLogin = (provider) => {
   console.log(`${provider} SNS 로그인 시도`)
   // SNS 연동 로직 추가 예정
 }
