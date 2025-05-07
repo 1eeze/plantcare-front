@@ -4,9 +4,9 @@ import { createRouter, createWebHistory } from 'vue-router'
 // ✅ [추가] 로그인 여부를 확인하는 전역 가드에 필요한 스토어 임포트
 import { useAuthStore } from '../store/authStore'
 
-import LoginForm from '../components/LoginForm.vue'
-import SignupForm from '../components/SignupForm.vue'
-import SignupEmail from '../components/SignupEmail.vue'
+import LoginForm from '../components/Signup/LoginForm.vue'
+import SignupForm from '../components/Signup/SignupForm.vue'
+import SignupEmail from '../components/Signup/SignupEmail.vue'
 
 // ✅ [추가] 로그인 후 진입 가능한 페이지들
 import FeedView from '../views/FeedView.vue'
