@@ -84,7 +84,6 @@
   <script setup>
   import { ref } from 'vue'
   import { useRouter } from 'vue-router'
-
   
   const userId = ref('')
   const userPassword = ref('')
@@ -109,7 +108,7 @@
   }
   
   const goToSignup = () => {
-  router.push('/signup')
+    router.push('/signup/step1')
   }
   </script>
   

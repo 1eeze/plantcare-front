@@ -43,7 +43,10 @@
  
 <script setup>
 import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+
 const emit = defineEmits(['next', 'prev'])
+const router = useRouter()
   
 const nickname = ref('')
 const imageFile = ref(null)
@@ -58,10 +61,10 @@ const onImageChange = (event) => {
 }
 
 const goBack = () => {
-  emit('prev')  // 상위 컴포넌트에서 이전 단계로 이동
+  router.push('/signup/email')  // 상위 컴포넌트에서 이전 단계로 이동
 }
 const goNext = () => {
-  emit('next')  // 추후 formData 형태로 DB 서버에 POST 요청 전송 추가
+  router.push('/signup/step3')  // 추후 formData 형태로 DB 서버에 POST 요청 전송 추가
 }
 </script>
  

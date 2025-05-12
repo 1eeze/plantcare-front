@@ -10,7 +10,7 @@
         <strong>Plant Care</strong>가 늘 함께 지켜볼게요!
       </p>
   
-      <button class="home-button" @click="goHome">홈으로</button>
+      <button class="home-button" @click="goHome">로그인 화면으로</button>
     </div>
   </template>
   

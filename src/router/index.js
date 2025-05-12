@@ -10,12 +10,13 @@ import SignupComplete from '../components/Signup/SignupComplete.vue'
 
 const routes = [
   { path: '/', component: LoginForm },
-  { path: '/signup', component: SignupView },
-  { path: '/signup-step1', component: SignupStep1 },
-  { path: '/signup-email', component: SignupEmail },
-  { path: '/signup-step2', component: SignupStep2 },
-  { path: '/signup-step3', component: SignupStep3 },
-  { path: '/signup-complete', component: SignupComplete },
+  { path: '/signup', component: SignupView, children: [
+    { path: 'step1', component: SignupStep1 },
+    { path: 'step2', component: SignupStep2 },
+    { path: 'step3', component: SignupStep3 },
+    { path: 'email', component: SignupEmail },
+    { path: 'complete', component: SignupComplete }
+  ]}
 ]
 
 const router = createRouter({

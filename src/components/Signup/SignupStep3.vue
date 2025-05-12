@@ -13,7 +13,7 @@
               </svg>
             </div>
           </div>
-          <input type="file" id="profileImage" accept="image/*" @change="onImageChange" hidden />
+          <input type="file" id="plantImage" accept="image/*" @change="onImageChange" hidden />
         </label>
       </div>
     
@@ -28,14 +28,20 @@
         <button v-if="PlantNickname" class="clear-button" @click="PlantNickname = ''">✕</button>
       </div>
     
-      <!-- 여백 -->
-      <div class="placeholder-space"></div>
+    <!-- 여백 -->
+    <div class="placeholder-space"></div>
       
-      <!-- 하단 버튼 영역 -->
-      <div class="bottom-button-row">
+    <!-- 하단 버튼 영역 -->
+    <div class="bottom-button-row">
         <button class="prev-button" @click="goBack">이전</button>
-        <button class="next-button" :disabled="!nickname" @click="goNext">완료</button>
-      </div>
+        <button
+        class="next-button"
+        :disabled="!PlantNickname || !imageFile"
+        @click="goNext"
+      >
+        완료
+      </button>
+    </div>
 
       <!-- 건너뛰기 버튼 -->
       <button class="skip-button" @click="skipStep">건너뛰기</button>
@@ -45,7 +51,10 @@
    
   <script setup>
   import { ref } from 'vue'
+  import { useRouter } from 'vue-router'
+
   const emit = defineEmits(['next', 'prev'])
+  const router = useRouter()
     
   const PlantNickname = ref('')
   const imageFile = ref(null)
@@ -60,14 +69,14 @@
   }
   
   const goBack = () => {
-    emit('prev') // 상위 컴포넌트에서 이전 단계로 이동
+    router.push('/signup/step2') // 상위 컴포넌트에서 이전 단계로 이동
   }
   const goNext = () => {
-    emit('next')  // 추후 formData 형태로 DB 서버에 POST 요청 전송 추가
+    router.push('/signup/complete')  // 추후 formData 형태로 DB 서버에 POST 요청 전송 추가
   }
 
   const skipStep = () => {
-  emit('next')  // 또는 emit('skip') 등 필요에 따라
+    router.push('/signup/complete')  // 또는 emit('skip') 등 필요에 따라
   }
   </script>
    

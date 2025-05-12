@@ -27,7 +27,10 @@
   
   <script setup>
   import { ref } from 'vue'
+  import { useRouter } from 'vue-router'
+  
   const emit = defineEmits(['next'])
+  const router = useRouter()
   
   const email = ref('')
   const password = ref('')
@@ -51,7 +54,7 @@
       return
     }
     console.log('회원가입 정보:', { email: email.value, password: password.value })
-    emit('next')
+    router.push('/signup/step2')
   }
   </script>
   

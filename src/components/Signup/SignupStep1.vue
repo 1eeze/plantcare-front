@@ -57,7 +57,7 @@
 
       <div class="divider"><span>또는</span></div>
 
-      <button class="app-signup-button" @click="$router.push('/signup-email')">
+      <button class="app-signup-button" @click="$router.push('/signup/email')">
         Plant Care으로 회원가입
       </button>
 
@@ -70,6 +70,7 @@
 </template>
 
 <script setup>
+
 const handleNaverLogin = (provider) => {
   console.log(`${provider} SNS 로그인 시도`)
   // SNS 연동 로직 추가 예정
