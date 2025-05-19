@@ -7,6 +7,7 @@ import SignupEmail from '../components/Signup/SignupEmail.vue'
 import SignupStep2 from '../components/Signup/SignupStep2.vue'
 import SignupStep3 from '../components/Signup/SignupStep3.vue'
 import SignupComplete from '../components/Signup/SignupComplete.vue'
+import Community from '../components/Community/contain.vue'
 
 const routes = [
   { path: '/', component: LoginForm },
@@ -16,6 +17,7 @@ const routes = [
   { path: '/signup-step2', component: SignupStep2 },
   { path: '/signup-step3', component: SignupStep3 },
   { path: '/signup-complete', component: SignupComplete },
+  { path: '/community', component: Community },
 ]
 
 const router = createRouter({

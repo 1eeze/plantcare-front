@@ -106,6 +106,12 @@
   const handleLogin = () => {
     console.log('로그인', userId.value, userPassword.value, '로그인 유지:', secureLogin.value)
     // TODO: 로그인 API 연동 또는 인증 로직 추가
+    // 테스트용 간단한 로그인 조건
+    if (userId.value === 'test' && userPassword.value === '1234') {
+      router.push('/community') // 테스트 페이지로 이동
+    } else {
+      alert('아이디 또는 비밀번호가 올바르지 않습니다.')
+    }
   }
   
   const goToSignup = () => {
