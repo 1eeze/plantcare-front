@@ -7,7 +7,7 @@ import SignupEmail from '../components/Signup/SignupEmail.vue'
 import SignupStep2 from '../components/Signup/SignupStep2.vue'
 import SignupStep3 from '../components/Signup/SignupStep3.vue'
 import SignupComplete from '../components/Signup/SignupComplete.vue'
-import Community from '../components/Community/Container.vue'
+import Community from '../components/Community/Container.vue' //contain -> Container
 import WritePost from '../components/Community/WritePost.vue'
 
 const routes = [
