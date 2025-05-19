@@ -1,3 +1,13 @@
+<script>
+  import Container from './Container.vue'
+
+  export default {
+    components: {
+      Container
+    }
+  }
+</script>
+
 <template>
 <div class="header">
     <ul class="header-button-left">

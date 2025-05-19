@@ -15,7 +15,7 @@
 
 <script>
 export default {
-    name : InstaPost
+    name : 'Post'
 }
 </script>
 
