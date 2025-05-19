@@ -14,14 +14,15 @@
 </template>
 
 <script>
-export default {
-    name : 'Post'
-}
+  export default {
+      name : 'Post'
+  }
 </script>
 
 <style>
     .post {
   width: 100%;
+  background-color: white;
 }
 .profile {
   background-image: url("https://picsum.photos/100?random=0");
@@ -52,10 +53,12 @@ export default {
   padding-left: 15px;
   padding-right: 15px;
   font-size: 14px;
+  text-align: left;
 }
 .date {
   font-size: 11px;
   color: grey;
   margin-top: -8px;
+  text-align: left;
 } 
 </style>
