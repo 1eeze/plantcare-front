@@ -16,7 +16,7 @@ jobs:
 
       - name: Push to mirror repo
         run: |
-          git config --global user.name "leeze"
-          git config --global user.email "leeze01@naver.com"
-          git remote add mirror https://leeze:${{ secrets.PERSONAL_TOKEN }}@github.com/leeze/plantcare-front.git
+          git config --global user.name "1eeze"
+          git config --global user.email "leezeze01@naver.com"
+          git remote add mirror https://1eeze:${{ secrets.PERSONAL_TOKEN }}@github.com/1eeze/plantcare-front.git
           git push mirror HEAD:main --force
