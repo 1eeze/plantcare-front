@@ -25,6 +25,12 @@ export default {
   margin-top: 60px;
 }
 
+body, html, #app {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 /* 업로드 모달 */
 .upload-modal {
   position: fixed;
