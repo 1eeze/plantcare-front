@@ -5,8 +5,8 @@
       <!-- 토글 메뉴 버튼 -->
       <button class="menu-btn" @click="toggleMenu">☰</button>
       <div class="location">
-        <p class="greeting">Hi David!</p>
-        <p class="city">New York, USA</p>
+        <p class="greeting">안녕하세요, 사용자 님!</p>
+        <p class="city">Seoul, KOREA</p>
       </div>
       <!-- 카메라 버튼 -->
       <button class="camera-btn" @click="openCamera" aria-label="카메라 열기">
@@ -18,7 +18,7 @@
 
     <!-- 내 식물 리스트 -->
     <div class="section-title">
-      <h3>My Plants</h3>
+      <h3>나의 식물</h3>
       <button class="view-all">View all</button>
     </div>
     <div class="plant-scroll">
@@ -35,7 +35,7 @@
 
     <!-- 요약 카드 -->
     <div class="section-title">
-      <h3>Plant Summary</h3>
+      <h3>식물 상태 요약</h3>
     </div>
     <div class="summary-list">
       <div v-for="plant in plants" :key="plant.id" class="summary-card">

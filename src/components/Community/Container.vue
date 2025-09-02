@@ -1,18 +1,13 @@
 <template>
   <div class="container">
     <!-- 게시물 목록 -->
-    <Post />
-    <Post />
-    <Post />
-
-    <!-- 오른쪽 하단 고정 글쓰기 버튼 -->
-    <button class="fab" @click="goToWrite">+</button>
+    <router-view />
   </div>
 </template>
 
 <script>
 import { useRouter } from 'vue-router'
-import Post from './Post.vue'
+import Post from './Community.vue'
 
 export default {
   components: {

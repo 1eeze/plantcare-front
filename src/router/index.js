@@ -9,11 +9,15 @@ import SignupStep3 from '../components/Signup/SignupStep3.vue'
 import SignupComplete from '../components/Signup/SignupComplete.vue'
 import MainLayout from '../components/MainLayout.vue'
 import Home  from '../components/Home.vue'
+import Community from '../components/Community/Community.vue'
+import WritePost from '../components/Community/WritePost.vue'
 import Profile from '../components/Profile/ProfileView.vue'
 
 const routes = [
   { path: '/', component: MainLayout, children: [
       { path: '', component: Home },
+      { path: 'community', component: Community },
+      { path: 'write', component: WritePost },
       { path: 'profile', component: Profile }
   ] },
   { path: '/signup', component: SignupView, children: [
