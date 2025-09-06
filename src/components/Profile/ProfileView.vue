@@ -6,8 +6,8 @@
       <input type="file" id="profile-upload" @change="changeProfileImage" hidden />
     </div>
 
-    <h2 class="nickname">사용자 이름</h2>
     <p class="description">여기는 칭호</p>
+    <h2 class="nickname">사용자 이름</h2>
 
     <div class="stats-box">
       <div class="stat-item">
@@ -90,15 +90,17 @@ const changeProfileImage = (e) => {
 }
 
 .nickname {
-  margin-top: 12px;
   font-size: 20px;
+  margin-bottom: 30px;
+  margin-top: 5px;
   color: #4a6444;
 }
 
 .description {
+  margin-top: 20px;
+  margin-bottom:5px;
   font-size: 14px;
   color: #888;
-  margin-bottom: 20px;
 }
 
 .stats-box {
