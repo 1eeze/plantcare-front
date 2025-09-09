@@ -24,34 +24,62 @@
       </div>
       <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }"></div>
       <div class="post-content">
-        <p>{{ post.likes }} Likes</p>
+        <div class="action-section">
+          <!-- 좋아요 -->
+          <div class="like-section">
+            <img
+              :src="post.liked ? filledHeart : emptyHeart"
+              @click="toggleLike(post)"
+              class="heart-icon"
+              alt="좋아요"
+            />
+            <span>{{ post.likes }}</span>
+          </div>
+          
+          <!-- 댓글 -->
+          <div class="comment-section">
+            <img
+              src="../../assets/icons/comments.png"
+              @click="goToComments(post.id)"
+              class="comment-icon"
+              alt="댓글"
+            />
+            <span>{{ post.comments }}</span>
+          </div>
+        </div>
         <p><strong>{{ post.name }}</strong> {{ post.text }}</p>
         <p class="date">{{ post.date }}</p>
       </div>
     </div>
   </div>
+  <Comment
+    :visible="showComment"
+    :postId="selectedPostId"
+    @close="showComment = false"
+  />
 </template>
 
 <script>
+import filledHeart from '../../assets/icons/filled-heart.png'
+import emptyHeart from '../../assets/icons/empty-heart.png'
+import Comment from './Comment.vue'
+
 export default {
-  methods: {
-    goToNotifications() {
-      this.$router.push('/notifications')
-    },
-    goToWrite() {
-      this.$router.push('/write')
-    }
+  name: 'CommunityFeed',
+
+  components: {
+    Comment
   },
 
-  name: 'CommunityFeed',
   data() {
     return {
       stories: [
         { id: 1, name: 'you', image: 'https://picsum.photos/50?random=1' },
         { id: 2, name: 'planty', image: 'https://picsum.photos/50?random=2' },
         { id: 3, name: 'green', image: 'https://picsum.photos/50?random=3' },
-        // ...
       ],
+      filledHeart,
+      emptyHeart,
       posts: [
         {
           id: 1,
@@ -60,7 +88,9 @@ export default {
           image: 'https://picsum.photos/600?random=10',
           text: '오늘 몬스테라 너무 예뻐요 🌿',
           date: 'Sep 1',
-          likes: 43
+          likes: 43,
+          liked: false,
+          comments: 8
         },
         {
           id: 2,
@@ -69,10 +99,37 @@ export default {
           image: 'https://picsum.photos/600?random=11',
           text: '햇빛 받은 알로카시아 ☀️',
           date: 'Sep 2',
-          likes: 77
+          likes: 77,
+          liked: false,
+          comments: 5
         }
-      ]
+      ],
+      selectedPostId: null,
+      showComment: false
     };
+  },
+
+  watch: {
+    showComment(val) {
+      this.$emit('comment-visibility', val); // 부모에게 알림
+    }
+  },
+
+  methods: {
+    goToNotifications() {
+      this.$router.push('/notifications');
+    },
+    goToWrite() {
+      this.$router.push('/write');
+    },
+    toggleLike(post) {
+      post.liked = !post.liked;
+      post.likes += post.liked ? 1 : -1;
+    },
+    goToComments(postId) {
+      this.selectedPostId = postId;
+      this.showComment = true;
+    }
   }
 }
 </script>
@@ -140,7 +197,7 @@ export default {
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  border: 2px solid #8eb88c;
+  border: 2px solid #92c3a4;
 }
 
 .story-name {
@@ -193,4 +250,38 @@ export default {
   color: grey;
   margin-top: 6px;
 }
+
+.action-section {
+  display: flex;
+  align-items: center;
+  gap: 10px; /* 좋아요/댓글 간 간격 */
+  margin-bottom: 8px;
+}
+
+.like-section,
+.comment-section {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.heart-icon {
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+  margin-right: 4px;
+  transition: transform 0.2s ease;
+}
+
+.heart-icon:active {
+  transform: scale(1.2);
+}
+
+.comment-icon {
+  width: 21px;
+  height: 21px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+
 </style>
