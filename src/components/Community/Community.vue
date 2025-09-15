@@ -48,6 +48,13 @@
         </div>
       </div>
     </div>
+
+    <!-- ✅ 버튼 두 개 나란히 배치 -->
+    <div class="buy-btn-wrapper">
+      <button class="chat-btn">채팅하기</button>
+      <button class="buy-btn">구매하기</button>
+    </div>
+
   </div>
 
   <!-- 댓글 모달 -->
@@ -125,7 +132,7 @@ export default {
     formatPrice(value) {
       return new Intl.NumberFormat('ko-KR').format(value) + '원'
     } 
-}
+  }
 }
 </script>
 
@@ -133,11 +140,10 @@ export default {
 .post-card {
   background: white;
   border-radius: 16px;
-  margin: 12px 16px;
+  margin: 24px 16px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
   overflow: hidden;
-  text-align: left; /* 기본 왼쪽 정렬 */
-  margin:24px 16px;
+  text-align: left;
 }
 
 /* 상품 이미지 */
@@ -160,14 +166,14 @@ export default {
   font-weight: bold;
   color: #333;
   margin: 0;
-  text-align: left; /* 왼쪽 정렬 고정 */
+  text-align: left;
 }
 
 .post-price {
   font-size: 16px;
   font-weight: bold;
-  color: #568265; /* 초록 포인트 */
-  text-align: right; /* 가격만 오른쪽 */
+  color: #568265;
+  text-align: right;
 }
 
 /* 날짜 */
@@ -195,18 +201,17 @@ export default {
   border-top: 1px solid #eee;
 }
 
+.profile-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .profile {
   background-size: cover;
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  margin-right: 8px;
-}
-
-.profile-info {
-  display: flex;
-  align-items: center; 
-  gap: 8px;            
 }
 
 .profile-name {
@@ -228,4 +233,45 @@ export default {
   margin-right: 4px;
 }
 
+.buy-btn-wrapper {
+  display: flex;
+  gap: 10px;          /* 버튼 사이 간격 */
+  padding: 0 16px 16px;
+}
+
+/* 구매하기 버튼 (초록 배경) */
+.buy-btn {
+  flex: 1;            /* 두 버튼이 동일한 너비 차지 */
+  background-color: #568265;
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 0;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.buy-btn:hover {
+  background-color: #456b4f;
+}
+
+/* 채팅하기 버튼 (하얀 배경 + 초록 테두리) */
+.chat-btn {
+  flex: 1;
+  background-color: white;
+  color: #568265;
+  font-size: 16px;
+  font-weight: bold;
+  border: 2px solid #568265;
+  border-radius: 8px;
+  padding: 12px 0;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.chat-btn:hover {
+  background-color: #f0f5f2; /* 살짝 연한 초록빛 배경 */
+}
 </style>
