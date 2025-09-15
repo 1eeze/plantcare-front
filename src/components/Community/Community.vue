@@ -1,57 +1,56 @@
 <template>
-  <div class="community-feed">
-    <!-- 상단 헤더 (알림 + 글쓰기 버튼) -->
-    <div class="feed-header">
-      <button class="icon-btn" @click="goToNotifications">
-        <img src="../../assets/icons/heart.png" alt="알람" class="notification-icon" />
-      </button>
-      <button class="write-btn" @click="goToWrite">+</button>
+  <div v-for="post in posts" :key="post.id" class="post-card">
+    <!-- 상품 이미지 -->
+    <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }"></div>
+
+    <!-- 상품명 + 가격 -->
+    <div class="post-header-bar">
+      <h3 class="post-title">{{ post.title }}</h3>
+      <span class="post-price">{{ formatPrice(post.price) }}</span>
     </div>
 
-    <!-- 스토리 바 -->
-    <div class="story-bar">
-      <div v-for="story in stories" :key="story.id" class="story-item">
-        <img :src="story.image" class="story-img" />
-        <p class="story-name">{{ story.name }}</p>
-      </div>
+    <!-- 날짜 -->
+    <p class="date">{{ post.date }}</p>
+
+    <!-- 본문 -->
+    <div class="post-content">
+      <p>{{ post.text }}</p>
     </div>
 
-    <!-- 피드 리스트 -->
-    <div v-for="post in posts" :key="post.id" class="post-card">
-      <div class="post-header">
+    <!-- 프로필 + 좋아요 + 댓글 -->
+    <div class="post-footer">
+      <div class="profile-info">
         <div class="profile" :style="{ backgroundImage: `url(${post.profile})` }"></div>
         <span class="profile-name">{{ post.name }}</span>
       </div>
-      <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }"></div>
-      <div class="post-content">
-        <div class="action-section">
-          <!-- 좋아요 -->
-          <div class="like-section">
-            <img
-              :src="post.liked ? filledHeart : emptyHeart"
-              @click="toggleLike(post)"
-              class="heart-icon"
-              alt="좋아요"
-            />
-            <span>{{ post.likes }}</span>
-          </div>
-          
-          <!-- 댓글 -->
-          <div class="comment-section">
-            <img
-              src="../../assets/icons/comments.png"
-              @click="goToComments(post.id)"
-              class="comment-icon"
-              alt="댓글"
-            />
-            <span>{{ post.comments }}</span>
-          </div>
+
+      <div class="action-section">
+        <!-- 좋아요 -->
+        <div class="like-section">
+          <img
+            :src="post.liked ? filledHeart : emptyHeart"
+            @click="toggleLike(post)"
+            class="heart-icon"
+            alt="좋아요"
+          />
+          <span>{{ post.likes }}</span>
         </div>
-        <p><strong>{{ post.name }}</strong> {{ post.text }}</p>
-        <p class="date">{{ post.date }}</p>
+
+        <!-- 댓글 -->
+        <div class="comment-section">
+          <img
+            src="../../assets/icons/comments.png"
+            @click="goToComments(post.id)"
+            class="comment-icon"
+            alt="댓글"
+          />
+          <span>{{ post.comments }}</span>
+        </div>
       </div>
     </div>
   </div>
+
+  <!-- 댓글 모달 -->
   <Comment
     :visible="showComment"
     :postId="selectedPostId"
@@ -73,11 +72,6 @@ export default {
 
   data() {
     return {
-      stories: [
-        { id: 1, name: 'you', image: 'https://picsum.photos/50?random=1' },
-        { id: 2, name: 'planty', image: 'https://picsum.photos/50?random=2' },
-        { id: 3, name: 'green', image: 'https://picsum.photos/50?random=3' },
-      ],
       filledHeart,
       emptyHeart,
       posts: [
@@ -86,8 +80,10 @@ export default {
           profile: 'https://picsum.photos/100?random=10',
           name: 'PlantLover',
           image: 'https://picsum.photos/600?random=10',
-          text: '오늘 몬스테라 너무 예뻐요 🌿',
+          title: '몬스테라 알보',
+          text: '무늬가 예쁩니다',
           date: 'Sep 1',
+          price: 30000,
           likes: 43,
           liked: false,
           comments: 8
@@ -97,8 +93,10 @@ export default {
           profile: 'https://picsum.photos/100?random=11',
           name: 'SunshineGreen',
           image: 'https://picsum.photos/600?random=11',
-          text: '햇빛 받은 알로카시아 ☀️',
+          title: '알로카시아',
+          text: '잎맥이 선명해서 인테리어에 좋습니다.',
           date: 'Sep 2',
+          price: 50000,
           likes: 77,
           liked: false,
           comments: 5
@@ -111,17 +109,11 @@ export default {
 
   watch: {
     showComment(val) {
-      this.$emit('comment-visibility', val); // 부모에게 알림
+      this.$emit('comment-visibility', val);
     }
   },
 
   methods: {
-    goToNotifications() {
-      this.$router.push('/notifications');
-    },
-    goToWrite() {
-      this.$router.push('/write');
-    },
     toggleLike(post) {
       post.liked = !post.liked;
       post.likes += post.liked ? 1 : -1;
@@ -129,103 +121,92 @@ export default {
     goToComments(postId) {
       this.selectedPostId = postId;
       this.showComment = true;
-    }
-  }
+    },
+    formatPrice(value) {
+      return new Intl.NumberFormat('ko-KR').format(value) + '원'
+    } 
+}
 }
 </script>
 
 <style scoped>
-.community-feed {
-  background-color: #f7f6ed;
-  padding-bottom: 80px;
-}
-
-.feed-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px 4px;
-}
-
-.icon-btn {
-  font-size: 20px;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
-.notification-icon {
-  width: 24px;
-  height: 24px;
-  object-fit: contain;
-}
-
-.write-btn {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #568265; /* 초록색 */
-  color: white;
-  font-size: 24px;
-  font-weight: bold;
-  border: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
-  transition: background-color 0.2s ease;
-}
-
-.write-btn:hover {
-  background-color: #456b4f;
-}
-
-.story-bar {
-  display: flex;
-  overflow-x: auto;
-  padding: 12px 10px;
-  gap: 12px;
-}
-
-.story-item {
-  flex: 0 0 auto;
-  text-align: center;
-}
-
-.story-img {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: 2px solid #92c3a4;
-}
-
-.story-name {
-  font-size: 12px;
-  margin-top: 6px;
-  color: #555;
-}
-
 .post-card {
   background: white;
   border-radius: 16px;
   margin: 12px 16px;
   box-shadow: 0 2px 6px rgba(0,0,0,0.05);
   overflow: hidden;
+  text-align: left; /* 기본 왼쪽 정렬 */
+  margin:24px 16px;
 }
 
-.post-header {
+/* 상품 이미지 */
+.post-body {
+  height: 300px;
+  background-size: cover;
+  background-position: center;
+}
+
+/* 상품명 + 가격 바 */
+.post-header-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px 0;
+}
+
+.post-title {
+  font-size: 18px;
+  font-weight: bold;
+  color: #333;
+  margin: 0;
+  text-align: left; /* 왼쪽 정렬 고정 */
+}
+
+.post-price {
+  font-size: 16px;
+  font-weight: bold;
+  color: #568265; /* 초록 포인트 */
+  text-align: right; /* 가격만 오른쪽 */
+}
+
+/* 날짜 */
+.date {
+  font-size: 12px;
+  color: grey;
+  margin: 4px 16px;
+  text-align: left;
+}
+
+/* 본문 */
+.post-content {
+  padding: 0 16px 8px;
+  font-size: 14px;
+  color: #333;
+  text-align: left;
+}
+
+/* 프로필 + 좋아요 + 댓글 */
+.post-footer {
   display: flex;
   align-items: center;
-  padding: 10px;
+  justify-content: space-between;
+  padding: 8px 16px 12px;
+  border-top: 1px solid #eee;
 }
 
 .profile {
   background-size: cover;
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  margin-right: 10px;
+  margin-right: 8px;
+}
+
+.profile-info {
+  display: flex;
+  align-items: center; 
+  gap: 8px;            
 }
 
 .profile-name {
@@ -233,53 +214,16 @@ export default {
   font-weight: bold;
 }
 
-.post-body {
-  height: 300px;
-  background-size: cover;
-  background-position: center;
-}
-
-.post-content {
-  padding: 12px 16px;
-  font-size: 14px;
-  color: #333;
-}
-
-.date {
-  font-size: 11px;
-  color: grey;
-  margin-top: 6px;
-}
-
+/* 액션 아이콘 */
 .action-section {
   display: flex;
   align-items: center;
-  gap: 10px; /* 좋아요/댓글 간 간격 */
-  margin-bottom: 8px;
+  gap: 10px;
 }
 
-.like-section,
-.comment-section {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.heart-icon {
-  width: 22px;
-  height: 22px;
-  cursor: pointer;
-  margin-right: 4px;
-  transition: transform 0.2s ease;
-}
-
-.heart-icon:active {
-  transform: scale(1.2);
-}
-
-.comment-icon {
-  width: 21px;
-  height: 21px;
+.heart-icon, .comment-icon {
+  width: 20px;
+  height: 20px;
   cursor: pointer;
   margin-right: 4px;
 }
