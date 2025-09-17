@@ -1,108 +1,99 @@
-<script>
-  import Container from './Container.vue'
-
-  export default {
-    components: {
-      Container
-    }
-  }
-</script>
 
 <template>
-<div class="header">
-    <ul class="header-button-left">
-      <li>Cancel</li>
-    </ul>
-    <ul class="header-button-right">
-      <li>Next</li>
-    </ul>
-    <img src="../../assets/logo.png" class="logo" />
+  <div class="writepost">
+    <header class="writepost__header">
+      <ul class="writepost__header-left">
+        <img src="../../assets/icons/back-arrow.png" alt="cancle" />
+      </ul>
+      <ul class="writepost__header-right">
+        <li>Next</li>
+      </ul>
+      <img src="../../assets/logo.png" alt="Logo" class="writepost__logo" />
+    </header>
+
+    <Container />
+
+    <footer class="writepost__footer">
+      <ul class="writepost__footer-upload">
+        <input type="file" id="file" class="writepost__inputfile" />
+        <label for="file" class="writepost__plus-button">+</label>
+      </ul>
+    </footer>
   </div>
-
-  <Container />
-
-  <div class="footer">
-    <ul class="footer-button-plus">
-      <input type="file" id="file" class="inputfile" />
-      <label for="file" class="input-plus">+</label>
-    </ul>
- </div>
 </template>
-<style>
-body {
-  margin: 0;
+
+<style scoped>
+.writepost {
+  margin: 0 auto;
+  max-width: 460px;
+  width: 100%;
+  font-family: "consolas";
+  box-sizing: border-box;
+  position: relative;
+  border-left: 1px solid #eee;
+  border-right: 1px solid #eee;
 }
-ul {
-  padding: 5px;
-  list-style-type: none;
-}
-.logo {
-  width: 22px;
-  margin: auto;
-  display: block;
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 13px;
-}
-.header {
+
+.writepost__header {
+  position: sticky;
+  top: 0;
   width: 100%;
   height: 40px;
   background-color: white;
   padding-bottom: 8px;
-  position: sticky;
-  top: 0;
 }
-.header-button-left {
-  color: skyblue;
+
+.writepost__header-left,
+.writepost__header-right {
+  list-style: none;
+  padding: 5px;
+  margin-top: 10px;
+  cursor: pointer;
+  width: 50px;
+}
+
+.writepost__header-left {
   float: left;
-  width: 50px;
   padding-left: 20px;
-  cursor: pointer;
-  margin-top: 10px;
 }
-.header-button-right {
-  color: skyblue;
+
+.writepost__header-right {
   float: right;
-  width: 50px;
-  cursor: pointer;
-  margin-top: 10px;
 }
-.footer {
-  width: 100%;
+
+.writepost__logo {
+  width: 22px;
+  position: absolute;
+  top: 13px;
+  left: 0;
+  right: 0;
+  margin: auto;
+  display: block;
+}
+
+.writepost__footer {
   position: sticky;
   bottom: 0;
+  width: 100%;
   padding-bottom: 10px;
   background-color: white;
 }
-.footer-button-plus {
-  width: 80px;
+
+.writepost__footer-upload {
+  list-style: none;
   margin: auto;
+  width: 80px;
   text-align: center;
-  cursor: pointer;
   font-size: 24px;
   padding-top: 12px;
-}
-.sample-box {
-  width: 100%;
-  height: 600px;
-  background-color: bisque;
-}
-.inputfile {
-  display: none;
-}
-.input-plus {
   cursor: pointer;
 }
-#app {
-  box-sizing: border-box;
-  font-family: "consolas";
-  margin-top: 60px;
-  width: 100%;
-  max-width: 460px;
-  margin: auto;
-  position: relative;
-  border-right: 1px solid #eee;
-  border-left: 1px solid #eee;
+
+.writepost__inputfile {
+  display: none;
+}
+
+.writepost__plus-button {
+  cursor: pointer;
 }
 </style>

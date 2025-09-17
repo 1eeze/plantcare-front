@@ -90,17 +90,15 @@ const changeProfileImage = (e) => {
 }
 
 .nickname {
+  margin-top: 12px;
   font-size: 20px;
-  margin-bottom: 30px;
-  margin-top: 5px;
   color: #4a6444;
 }
 
 .description {
-  margin-top: 20px;
-  margin-bottom:5px;
   font-size: 14px;
   color: #888;
+  margin-bottom: 20px;
 }
 
 .stats-box {

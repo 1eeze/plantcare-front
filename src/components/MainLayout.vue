@@ -2,7 +2,7 @@
 <template>
   <div class="main-layout">
     <router-view /> <!-- 각 페이지가 여기에 렌더링 됨 -->
-    <BottomNav />    <!-- 공통 하단 네비게이션 바 -->
+    <BottomNav />
   </div>
 </template>
 
@@ -10,7 +10,7 @@
 import BottomNav from '../components/common/BottomNav.vue'
 
 export default {
-  components: { BottomNav }
+  components: { BottomNav },
 }
 </script>
 
