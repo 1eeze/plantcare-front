@@ -3,7 +3,7 @@
   <div class="writepost">
     <header class="writepost__header">
       <ul class="writepost__header-left">
-        <img src="../../assets/icons/back-arrow.png" alt="cancle" />
+        <img src="/icons/back-arrow.png" alt="cancle" />
       </ul>
       <ul class="writepost__header-right">
         <li>Next</li>
