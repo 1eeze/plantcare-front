@@ -3,7 +3,7 @@
     <!-- 상단 헤더 -->
     <div class="header-bar">
       <img 
-        src="../../assets/icons/back-arrow.png" 
+        src="/icons/back-arrow.png" 
         alt="뒤로가기" 
         class="back-btn" 
         @click="$router.back()" 

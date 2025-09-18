@@ -37,31 +37,31 @@ export default {
     const navItems = [
       {
         path: '/',
-        icon: '/src/assets/icons/home.png',
+        icon: '/icons/home.png',
         alt: '홈',
         label: '홈'
       },
       {
         path: '/unkown',
-        icon: '/src/assets/icons/plant.png',
+        icon: '/icons/plant.png',
         alt: '식물',
         label: '식물'
       },
       {
         path: '/marketprice',
-        icon: '/src/assets/icons/uptrend.png',
+        icon: '/icons/uptrend.png',
         alt: '시세',
         label: '시세'
       },
       {
         path: '/community',
-        icon: '/src/assets/icons/community.png',
+        icon: '/icons/community.png',
         alt: '커뮤니티',
         label: '커뮤니티'
       },
       {
         path: '/profile',
-        icon: '/src/assets/icons/profile.png',
+        icon: '/icons/profile.png',
         alt: '프로필',
         label: '프로필'
       }
