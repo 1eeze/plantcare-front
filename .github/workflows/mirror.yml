@@ -52,7 +52,8 @@ jobs:
           PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
         run: |
           git remote remove mirror 2>/dev/null || true
-          git remote add mirror https://1eeze:${PERSONAL_TOKEN}@github.com/1eeze/plantcare-front.git
+          git remote add mirror https://x-access-token:${PERSONAL_TOKEN}@github.com/1eeze/plantcare-front.git
           
           echo "Pushing to mirror repository..."
           git push mirror HEAD:main --force --verbose
+
