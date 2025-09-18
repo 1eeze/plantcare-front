@@ -5,7 +5,7 @@
         <div class="modal-header">
           <p>Comments</p>
           <button @click="close" class="close-btn">
-            <img src="../../assets/icons/x.png" alt="닫기" class="close-icon" />
+            <img src="/icons/x.png" alt="닫기" class="close-icon" />
           </button>
         </div>
 
@@ -19,7 +19,7 @@
                 placeholder="댓글을 입력하세요..."
             />
             <img
-                src="../../assets/icons/send-data.png"
+                src="/icons/send-data.png"
                 alt="업로드"
                 class="send-icon"
                 @click="submitComment"
