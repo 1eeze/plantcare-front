@@ -1,22 +1,44 @@
-name: Mirror to Repo
+name: Debug Mirror to Personal Repo
 
 on:
-  push:
-    branches:
-      - main
-  schedule:
-    - cron: '*/30 * * * *'
+  workflow_dispatch:  # 수동 실행용
 
 jobs:
   mirror:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source repo
-        uses: actions/checkout@v3
-
-      - name: Push to mirror repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+      
+      - name: Configure Git
         run: |
           git config --global user.name "1eeze"
           git config --global user.email "leezeze01@naver.com"
-          git remote add mirror https://1eeze:${{ secrets.PERSONAL_TOKEN }}@github.com/1eeze/plantcare-front.git
-          git push mirror HEAD:main --force
+      
+      - name: Debug - Check current state
+        run: |
+          echo "Current branch: $(git branch --show-current)"
+          echo "Remote repositories:"
+          git remote -v
+          echo "Recent commits:"
+          git log --oneline -5
+      
+      - name: Test GitHub connection
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          echo "Testing GitHub API connection..."
+          curl -H "Authorization: token $PERSONAL_TOKEN" https://api.github.com/user
+      
+      - name: Push to mirror repo
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          git remote remove mirror 2>/dev/null || true
+          git remote add mirror https://$PERSONAL_TOKEN@github.com/1eeze/plantcare-front.git
+          
+          echo "Pushing to mirror repository..."
+          git push mirror HEAD:main --force --verbose
