@@ -39,7 +39,7 @@
         <!-- 댓글 -->
         <div class="comment-section">
           <img
-            src="../../assets/icons/comments.png"
+            src="/icons/comments.png"
             @click="goToComments(post.id)"
             class="comment-icon"
             alt="댓글"
@@ -66,8 +66,8 @@
 </template>
 
 <script>
-import filledHeart from '../../assets/icons/filled-heart.png'
-import emptyHeart from '../../assets/icons/empty-heart.png'
+import filledHeart from '/icons/filled-heart.png'
+import emptyHeart from '/icons/empty-heart.png'
 import Comment from './Comment.vue'
 
 export default {
