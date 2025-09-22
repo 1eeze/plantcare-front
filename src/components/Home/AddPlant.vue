@@ -3,11 +3,9 @@
     <!-- 상단 헤더 -->
     <div class="header">
       <button class="back-btn" @click="$router.back()" aria-label="뒤로가기">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-          <path d="M15 18L9 12L15 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
+        <img src="/icons/back-arrow.png" alt="뒤로가기" class="back-icon" />
       </button>
-      <h2>내 식물 등록</h2>
+      <h2 class="header-title">내 식물 등록</h2>
     </div>
 
     <!-- 식물 사진 업로드 -->
@@ -352,7 +350,16 @@ onMounted(() => {
   border-bottom: 1px solid #eee;
 }
 
+.back-icon {
+  width: 22px;
+  height: 22px;  
+  object-fit: contain;
+}
+
 .back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: none;
   border: none;
   padding: 8px;
