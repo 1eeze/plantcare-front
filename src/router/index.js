@@ -7,7 +7,8 @@ import SignupStep2 from '@/components/Signup/SignupStep2.vue'
 import SignupStep3 from '@/components/Signup/SignupStep3.vue'
 import SignupComplete from '@/components/Signup/SignupComplete.vue'
 import MainLayout from '@/components/MainLayout.vue'
-import Home from '@/components/Home.vue'
+import Home from '@/components/Home/Home.vue'
+import AddPlant from '@/components/Home/AddPlant.vue'
 import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
 import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
@@ -22,12 +23,19 @@ const routes = [
       { 
         path: '', 
         name: 'Home',
-        component: Home 
+        component: Home,
+        meta: { showBottomNav: true }
+      },
+      { 
+        path: 'add-plant', 
+        name: 'AddPlant',
+        component: AddPlant 
       },
       { 
         path: 'marketprice', 
         name: 'MarketPrice',
-        component: MarketPrice 
+        component: MarketPrice,
+        meta: { showBottomNav: true }
       },
       { 
         path: 'plant/:id', 
@@ -38,7 +46,8 @@ const routes = [
       { 
         path: 'community', 
         name: 'Community',
-        component: Community 
+        component: Community,
+        meta: { showBottomNav: true } 
       },
       { 
         path: 'write', 
@@ -51,6 +60,7 @@ const routes = [
         path: 'profile', 
         name: 'Profile',
         component: Profile,
+        meta: { showBottomNav: true }
         // 로그인이 필요한 페이지라면
         // meta: { requiresAuth: true }
       }

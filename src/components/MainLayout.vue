@@ -1,16 +1,36 @@
 <!-- src/layouts/MainLayout.vue -->
 <template>
   <div class="main-layout">
-    <router-view /> <!-- 각 페이지가 여기에 렌더링 됨 -->
-    <BottomNav />
+    <div class="content">
+      <router-view />
+    </div>
+    
+    <!-- 조건부로 네비게이션 바 표시 -->
+    <BottomNav v-if="shouldShowBottomNav" />
   </div>
 </template>
 
 <script>
+import { computed } from 'vue'
+import { useRoute } from 'vue-router'
 import BottomNav from '../components/common/BottomNav.vue'
 
 export default {
-  components: { BottomNav },
+  name: 'MainLayout',
+  components: {
+    BottomNav
+  },
+  setup() {
+    const route = useRoute()
+    
+    const shouldShowBottomNav = computed(() => {
+      return route.meta.showBottomNav !== false
+    })
+    
+    return {
+      shouldShowBottomNav
+    }
+  }
 }
 </script>
 
