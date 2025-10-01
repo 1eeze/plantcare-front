@@ -51,7 +51,7 @@
 
     <!-- ✅ 버튼 두 개 나란히 배치 -->
     <div class="buy-btn-wrapper">
-      <button class="chat-btn">채팅하기</button>
+      <button class="chat-btn" @click="openChat">채팅하기</button>
       <button class="buy-btn">구매하기</button>
     </div>
 
@@ -63,18 +63,26 @@
     :postId="selectedPostId"
     @close="showComment = false"
   />
+
+  <ChatPopup
+    v-model:visible="showChat"
+    title="PlantCare 채팅"
+    @close="onClose"
+  />
 </template>
 
 <script>
 import filledHeart from '../../assets/icons/filled-heart.png'
 import emptyHeart from '../../assets/icons/empty-heart.png'
 import Comment from './Comment.vue'
+import ChatPopup from '../chat/ChatPopup.vue'
 
 export default {
   name: 'CommunityFeed',
 
   components: {
-    Comment
+    Comment,
+    ChatPopup
   },
 
   data() {
@@ -110,7 +118,8 @@ export default {
         }
       ],
       selectedPostId: null,
-      showComment: false
+      showComment: false,
+      showChat: false
     };
   },
 
@@ -131,7 +140,13 @@ export default {
     },
     formatPrice(value) {
       return new Intl.NumberFormat('ko-KR').format(value) + '원'
-    } 
+    },
+    openChat() {
+      this.showChat = true
+    },
+    onClose() {
+      this.showChat = false
+    }
   }
 }
 </script>
