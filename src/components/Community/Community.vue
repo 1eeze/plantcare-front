@@ -10,7 +10,7 @@
     </div>
 
     <!-- 날짜 -->
-    <p class="date">{{ post.date }}</p>
+    <p class="date">{{ new Date(post.created_at).toLocaleDateString() }}</p>
 
     <!-- 본문 -->
     <div class="post-content">
@@ -49,12 +49,11 @@
       </div>
     </div>
 
-    <!-- ✅ 버튼 두 개 나란히 배치 -->
+    <!-- 버튼 두 개 나란히 배치 -->
     <div class="buy-btn-wrapper">
-      <button class="chat-btn" @click="openChat">채팅하기</button>
+      <button class="chat-btn" @click="openChatFor(post)">채팅하기</button>
       <button class="buy-btn">구매하기</button>
     </div>
-
   </div>
 
   <!-- 댓글 모달 -->
@@ -64,10 +63,17 @@
     @close="showComment = false"
   />
 
+  <!-- 채팅 팝업 -->
   <ChatPopup
-    v-model:visible="showChat"
-    title="PlantCare 채팅"
-    @close="onClose"
+    v-for="chat in openChats"
+    :key="chat.id"
+    :visible="chat.visible"
+    :title="chat.title"
+    :startX="chat.pos.x"
+    :startY="chat.pos.y"
+    :zIndex="chat.z"
+    :receiverId="chat.seller_id"
+    @close="closeChat(chat.id)"
   />
 </template>
 
@@ -76,6 +82,9 @@ import filledHeart from '../../assets/icons/filled-heart.png'
 import emptyHeart from '../../assets/icons/empty-heart.png'
 import Comment from './Comment.vue'
 import ChatPopup from '../chat/ChatPopup.vue'
+import { supabase } from '../../utils/supabase'
+
+let zSeed = 10000
 
 export default {
   name: 'CommunityFeed',
@@ -97,11 +106,12 @@ export default {
           image: 'https://picsum.photos/600?random=10',
           title: '몬스테라 알보',
           text: '무늬가 예쁩니다',
-          date: 'Sep 1',
+          created_at: new Date().toISOString(),
           price: 30000,
           likes: 43,
           liked: false,
-          comments: 8
+          comments: 8,
+          user_id: 'temp-user-1'
         },
         {
           id: 2,
@@ -110,42 +120,72 @@ export default {
           image: 'https://picsum.photos/600?random=11',
           title: '알로카시아',
           text: '잎맥이 선명해서 인테리어에 좋습니다.',
-          date: 'Sep 2',
+          created_at: new Date().toISOString(),
           price: 50000,
           likes: 77,
           liked: false,
-          comments: 5
+          comments: 5,
+          user_id: 'temp-user-2'
         }
       ],
       selectedPostId: null,
       showComment: false,
-      showChat: false
-    };
-  },
-
-  watch: {
-    showComment(val) {
-      this.$emit('comment-visibility', val);
+      openChats: []
     }
   },
 
   methods: {
     toggleLike(post) {
-      post.liked = !post.liked;
-      post.likes += post.liked ? 1 : -1;
+      post.liked = !post.liked
+      post.likes += post.liked ? 1 : -1
     },
+
     goToComments(postId) {
-      this.selectedPostId = postId;
-      this.showComment = true;
+      this.selectedPostId = postId
+      this.showComment = true
     },
+
     formatPrice(value) {
       return new Intl.NumberFormat('ko-KR').format(value) + '원'
     },
-    openChat() {
-      this.showChat = true
+
+    openChatFor(post) {
+      const id = `post:${post.id}`
+      const title = post.name || '채팅'
+
+      const found = this.openChats.find(c => c.id === id)
+      if (found) {
+        found.visible = true
+        this.focusChat(id)
+        return
+      }
+
+      const room = {
+        id: id,
+        title: title,
+        visible: true,
+        pos: { 
+          x: 20 + (this.openChats.length * 30), 
+          y: 20 + (this.openChats.length * 30)
+        },
+        seller_id: post.user_id,
+        z: ++zSeed
+      }
+
+      this.openChats.push(room)
+      this.focusChat(id)
     },
-    onClose() {
-      this.showChat = false
+
+    focusChat(id) {
+      const c = this.openChats.find(x => x.id === id)
+      if (c) c.z = ++zSeed
+    },
+
+    closeChat(id) {
+      const idx = this.openChats.findIndex(x => x.id === id)
+      if (idx !== -1) {
+        this.openChats.splice(idx, 1)
+      }
     }
   }
 }
@@ -161,14 +201,12 @@ export default {
   text-align: left;
 }
 
-/* 상품 이미지 */
 .post-body {
   height: 300px;
   background-size: cover;
   background-position: center;
 }
 
-/* 상품명 + 가격 바 */
 .post-header-bar {
   display: flex;
   justify-content: space-between;
@@ -191,7 +229,6 @@ export default {
   text-align: right;
 }
 
-/* 날짜 */
 .date {
   font-size: 12px;
   color: grey;
@@ -199,7 +236,6 @@ export default {
   text-align: left;
 }
 
-/* 본문 */
 .post-content {
   padding: 0 16px 8px;
   font-size: 14px;
@@ -207,7 +243,6 @@ export default {
   text-align: left;
 }
 
-/* 프로필 + 좋아요 + 댓글 */
 .post-footer {
   display: flex;
   align-items: center;
@@ -234,7 +269,6 @@ export default {
   font-weight: bold;
 }
 
-/* 액션 아이콘 */
 .action-section {
   display: flex;
   align-items: center;
@@ -250,13 +284,12 @@ export default {
 
 .buy-btn-wrapper {
   display: flex;
-  gap: 10px;          /* 버튼 사이 간격 */
+  gap: 10px;
   padding: 0 16px 16px;
 }
 
-/* 구매하기 버튼 (초록 배경) */
 .buy-btn {
-  flex: 1;            /* 두 버튼이 동일한 너비 차지 */
+  flex: 1;
   background-color: #568265;
   color: white;
   font-size: 16px;
@@ -272,7 +305,6 @@ export default {
   background-color: #456b4f;
 }
 
-/* 채팅하기 버튼 (하얀 배경 + 초록 테두리) */
 .chat-btn {
   flex: 1;
   background-color: white;
@@ -287,6 +319,6 @@ export default {
 }
 
 .chat-btn:hover {
-  background-color: #f0f5f2; /* 살짝 연한 초록빛 배경 */
+  background-color: #f0f5f2;
 }
 </style>

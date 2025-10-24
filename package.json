@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.76.1",
     "apexcharts": "^5.3.5",
     "axios": "^1.12.2",
     "core-js": "^3.8.3",
