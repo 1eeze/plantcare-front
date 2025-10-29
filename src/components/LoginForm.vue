@@ -92,16 +92,23 @@
   const router = useRouter()
 
   const handleNaverLogin = () => {
-    window.location.href = 'https://pkplantcare.shop/auth/login/naver'
-  }
+  window.location.href = 'https://pkplantcare.shop/auth/login/naver'
+}
 
-  const handleKakaoLogin = () => {
-    window.location.href = 'https://pkplantcare.shop/auth/login/kakao'
-  }
+const handleKakaoLogin = () => {
+  const KAKAO_CLIENT_ID = '66a184c4fba998aab4012e9bc72b9f98'
+  const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
 
-  const handleGoogleLogin = () => {
-  window.location.href = 'https://pkplantcare.shop/login'
-  }
+  window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code`
+}
+
+const handleGoogleLogin = () => {
+  const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
+  const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
+
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${GOOGLE_REDIRECT_URI}&response_type=code&scope=email profile`
+}
+
   
   const handleLogin = () => {
     console.log('로그인', userId.value, userPassword.value, '로그인 유지:', secureLogin.value)
