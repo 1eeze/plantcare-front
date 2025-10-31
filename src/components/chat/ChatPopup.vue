@@ -101,8 +101,14 @@ export default {
   },
 
   async created() {
-    const { data: { user } } = await supabase.auth.getUser()
-    this.currentUser = user
+    // localStorage에서 사용자 정보 가져오기
+    const userId = localStorage.getItem('user_id')
+    if (userId) {
+      this.currentUser = { id: userId }
+    } else {
+      console.warn('로그인된 사용자가 없습니다.')
+      return
+    }
 
     this.loadMessages()
     this.subscribeToMessages()

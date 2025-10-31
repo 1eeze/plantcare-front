@@ -83,6 +83,10 @@ import emptyHeart from '../../assets/icons/empty-heart.png'
 import Comment from './Comment.vue'
 import ChatPopup from '../chat/ChatPopup.vue'
 import { supabase } from '../../utils/supabase'
+// import { apiFetch } from '@/utils/supabase'
+
+// const data = await apiFetch('https://knupbxftazopklvjionb.supabase.co/functions/v1/some_api')
+
 
 let zSeed = 10000
 

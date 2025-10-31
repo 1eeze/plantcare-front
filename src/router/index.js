@@ -13,6 +13,8 @@ import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
 import WritePost from '@/components/Community/WritePost.vue'
 import Profile from '@/components/Profile/ProfileView.vue'
+import LoginSuccess from '@/components/LoginSuccess.vue'
+
 
 const routes = [
   {
@@ -56,10 +58,15 @@ const routes = [
       }
     ]
   },
-  { 
-    path: '/login', 
+  {
+    path: '/login',
     name: 'Login',
-    component: LoginForm 
+    component: LoginForm
+  },
+  {
+    path: '/login-success',
+    name: 'LoginSuccess',
+    component: LoginSuccess
   },
   {
     path: '/signup',

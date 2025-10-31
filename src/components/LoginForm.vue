@@ -106,7 +106,7 @@ const handleGoogleLogin = () => {
   const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
   const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
 
-  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${GOOGLE_REDIRECT_URI}&response_type=code&scope=email profile`
+  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}&response_type=code&scope=email%20profile`
 }
 
   
