@@ -63,7 +63,7 @@
 
       <p class="login-link">
         이미 계정이 있으신가요?
-        <a href="/" class="login-text">로그인</a>
+        <a href="/login" class="login-text">로그인</a>
       </p>
     </div>
   </div>

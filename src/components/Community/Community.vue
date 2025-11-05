@@ -1,63 +1,169 @@
 <template>
-  <div v-for="post in posts" :key="post.id" class="post-card">
-    <!-- 상품 이미지 -->
-    <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }"></div>
-
-    <!-- 상품명 + 가격 -->
-    <div class="post-header-bar">
-      <h3 class="post-title">{{ post.title }}</h3>
-      <span class="post-price">{{ formatPrice(post.price) }}</span>
-    </div>
-
-    <!-- 날짜 -->
-    <p class="date">{{ new Date(post.created_at).toLocaleDateString() }}</p>
-
-    <!-- 본문 -->
-    <div class="post-content">
-      <p>{{ post.text }}</p>
-    </div>
-
-    <!-- 프로필 + 좋아요 + 댓글 -->
-    <div class="post-footer">
-      <div class="profile-info">
-        <div class="profile" :style="{ backgroundImage: `url(${post.profile})` }"></div>
-        <span class="profile-name">{{ post.name }}</span>
+  <div class="community-container">
+    <!-- 상단 헤더 -->
+    <div class="community-header">
+      <div class="header-content">
+        <h1>🌱 식물 거래</h1>
+        <p class="header-subtitle">건강한 식물들을 나누고 거래해보세요</p>
       </div>
-
-      <div class="action-section">
-        <!-- 좋아요 -->
-        <div class="like-section">
-          <img
-            :src="post.liked ? filledHeart : emptyHeart"
-            @click="toggleLike(post)"
-            class="heart-icon"
-            alt="좋아요"
+      
+      <!-- 검색 바 -->
+      <div class="search-section">
+        <div class="search-bar">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none">
+            <circle cx="11" cy="11" r="8" stroke="currentColor" stroke-width="2"/>
+            <path d="m21 21-4.35-4.35" stroke="currentColor" stroke-width="2"/>
+          </svg>
+          <input 
+            type="text" 
+            placeholder="식물 이름, 품종으로 검색..."
+            v-model="searchQuery"
+            @input="onSearch"
+            class="search-input"
           />
-          <span>{{ post.likes }}</span>
-        </div>
-
-        <!-- 댓글 -->
-        <div class="comment-section">
-          <img
-            src="../../assets/icons/comments.png"
-            @click="goToComments(post.id)"
-            class="comment-icon"
-            alt="댓글"
-          />
-          <span>{{ post.comments }}</span>
+          <button v-if="searchQuery" @click="clearSearch" class="clear-search">✕</button>
         </div>
       </div>
+
+      <!-- 필터 버튼들 -->
+      <div class="filter-section">
+        <button 
+          v-for="filter in filters" 
+          :key="filter.key"
+          @click="setActiveFilter(filter.key)"
+          :class="{ active: activeFilter === filter.key }"
+          class="filter-btn"
+        >
+          {{ filter.label }}
+        </button>
+      </div>
+
+      <!-- 게시글 작성 버튼 -->
+      <button @click="goToWritePost" class="write-post-btn">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M12 5V19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M5 12H19" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+        </svg>
+        식물 판매하기
+      </button>
     </div>
 
-    <!-- 버튼 두 개 나란히 배치 -->
-    <div class="buy-btn-wrapper">
-      <button class="chat-btn" @click="openChatFor(post)">채팅하기</button>
-      <button class="buy-btn">구매하기</button>
+    <!-- 로딩 상태 -->
+    <div v-if="loading" class="loading-container">
+      <div class="loading-spinner"></div>
+      <p>게시글을 불러오는 중...</p>
+    </div>
+
+    <!-- 빈 상태 -->
+    <div v-else-if="filteredPosts.length === 0" class="empty-state">
+      <div class="empty-icon">🌿</div>
+      <h3>{{ searchQuery ? '검색 결과가 없어요' : '아직 게시글이 없어요' }}</h3>
+      <p>{{ searchQuery ? '다른 키워드로 검색해보세요' : '첫 번째 식물을 공유해보세요!' }}</p>
+      <button @click="goToWritePost" class="empty-action-btn">첫 게시글 작성하기</button>
+    </div>
+
+    <!-- 게시글 리스트 -->
+    <div v-else class="posts-container">
+      <div v-for="post in filteredPosts" :key="post.id" class="post-card">
+        <!-- 상품 이미지 -->
+        <div class="post-image-wrapper">
+          <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }">
+            <!-- 상태 배지 -->
+            <div v-if="post.status" class="status-badge" :class="post.status">
+              {{ getStatusText(post.status) }}
+            </div>
+            <!-- 즐겨찾기 버튼 -->
+            <button @click="toggleBookmark(post)" class="bookmark-btn" :class="{ bookmarked: post.bookmarked }">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                <path d="M19 21L12 16L5 21V5C5 4.46957 5.21071 3.96086 5.58579 3.58579C5.96086 3.21071 6.46957 3 7 3H17C17.5304 3 18.0391 3.21071 18.4142 3.58579C18.7893 3.96086 19 4.46957 19 5V21Z" :stroke="post.bookmarked ? 'none' : 'currentColor'" :fill="post.bookmarked ? 'currentColor' : 'none'" stroke-width="2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 상품명 + 가격 -->
+        <div class="post-header-bar">
+          <h3 class="post-title">{{ post.title }}</h3>
+          <div class="price-section">
+            <span class="post-price">{{ formatPrice(post.price) }}</span>
+          </div>
+        </div>
+
+        <!-- 날짜 -->
+        <p class="date">{{ formatDate(post.created_at || post.date) }}</p>
+
+        <!-- 본문 -->
+        <div class="post-content">
+          <p class="post-description">{{ post.text }}</p>
+          <div v-if="post.tags && post.tags.length > 0" class="tags">
+            <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
+          </div>
+        </div>
+
+        <!-- 프로필 + 상호작용 -->
+        <div class="post-footer">
+          <div class="profile-info" @click="goToProfile(post.userId || post.user_id)">
+            <div class="profile-wrapper">
+              <div class="profile" :style="{ backgroundImage: `url(${post.profile})` }"></div>
+              <div class="verification-badge" v-if="post.verified">✓</div>
+            </div>
+            <div class="profile-details">
+              <span class="profile-name">{{ post.name }}</span>
+              <span class="profile-rating">⭐ {{ post.rating || '신규' }}</span>
+            </div>
+          </div>
+
+          <div class="action-section">
+            <!-- 좋아요 -->
+            <button @click="toggleLike(post)" class="action-btn like-btn" :class="{ liked: post.liked }">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M20.84 4.61C20.3292 4.099 19.7228 3.69364 19.0554 3.41708C18.3879 3.14052 17.6725 2.99817 16.95 2.99817C16.2275 2.99817 15.5121 3.14052 14.8446 3.41708C14.1772 3.69364 13.5708 4.099 13.06 4.61L12 5.67L10.94 4.61C9.9083 3.5783 8.50903 2.9987 7.05 2.9987C5.59096 2.9987 4.19169 3.5783 3.16 4.61C2.1283 5.6417 1.5487 7.04097 1.5487 8.5C1.5487 9.95903 2.1283 11.3583 3.16 12.39L12 21.23L20.84 12.39C21.351 11.8792 21.7563 11.2728 22.0329 10.6053C22.3095 9.93789 22.4518 9.22248 22.4518 8.5C22.4518 7.77752 22.3095 7.06211 22.0329 6.39467C21.7563 5.72723 21.351 5.1208 20.84 4.61Z" :fill="post.liked ? 'currentColor' : 'none'" :stroke="post.liked ? 'none' : 'currentColor'" stroke-width="2"/>
+              </svg>
+              <span>{{ post.likes }}</span>
+            </button>
+
+            <!-- 댓글 -->
+            <button @click="goToComments(post.id)" class="action-btn comment-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M21 15C21 15.5304 20.7893 16.0391 20.4142 16.4142C20.0391 16.7893 19.5304 17 19 17H7L3 21V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H19C19.5304 3 20.0391 3.21071 20.4142 3.58579C20.7893 3.96086 21 4.46957 21 5V15Z" stroke="currentColor" stroke-width="2"/>
+              </svg>
+              <span>{{ post.comments }}</span>
+            </button>
+
+            <!-- 공유 -->
+            <button @click="sharePost(post)" class="action-btn share-btn">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                <path d="M4 12V20C4 20.5304 4.21071 21.0391 4.58579 21.4142C4.96086 21.7893 5.46957 22 6 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V12" stroke="currentColor" stroke-width="2"/>
+                <path d="M16 6L12 2L8 6" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 2V15" stroke="currentColor" stroke-width="2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 액션 버튼들 -->
+        <div class="action-buttons">
+          <button @click="openChat(post)" class="chat-btn" :disabled="post.status === 'sold'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M21 11.5C21.0034 12.8199 20.6951 14.1219 20.1 15.3C19.3944 16.7118 18.3098 17.8992 16.9674 18.7293C15.6251 19.5594 14.0782 19.9994 12.5 20C11.1801 20.0035 9.87812 19.6951 8.7 19.1L3 21L4.9 15.3C4.30493 14.1219 3.99656 12.8199 4 11.5C4.00061 9.92179 4.44061 8.37488 5.27072 7.03258C6.10083 5.69028 7.28825 4.60573 8.7 3.90003C9.87812 3.30496 11.1801 2.99659 12.5 3H13C15.0843 3.11499 17.053 3.99476 18.5291 5.47086C20.0052 6.94695 20.885 8.91565 21 11V11.5Z" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            {{ post.status === 'sold' ? '판매완료' : '채팅하기' }}
+          </button>
+          <button @click="buyNow(post)" class="buy-btn" :disabled="post.status === 'sold'">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+              <path d="M9 12L11 14L15 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2"/>
+            </svg>
+            {{ post.status === 'sold' ? '판매완료' : '바로구매' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 
   <!-- 댓글 모달 -->
   <Comment
+    v-if="showComment"
     :visible="showComment"
     :postId="selectedPostId"
     @close="showComment = false"
@@ -78,21 +184,15 @@
 </template>
 
 <script>
-import filledHeart from '../../assets/icons/filled-heart.png'
-import emptyHeart from '../../assets/icons/empty-heart.png'
 import Comment from './Comment.vue'
 import ChatPopup from '../chat/ChatPopup.vue'
 import { supabase } from '../../utils/supabase'
-// import { apiFetch } from '@/utils/supabase'
-
-// const data = await apiFetch('https://knupbxftazopklvjionb.supabase.co/functions/v1/some_api')
-
 
 let zSeed = 10000
 
 export default {
-  name: 'CommunityFeed',
-
+  name: 'Community',
+  
   components: {
     Comment,
     ChatPopup
@@ -100,48 +200,146 @@ export default {
 
   data() {
     return {
-      filledHeart,
-      emptyHeart,
+      loading: false,
+      loadingMore: false,
+      searchQuery: '',
+      activeFilter: 'all',
+      selectedPostId: null,
+      showComment: false,
+      openChats: [],
+      
+      filters: [
+        { key: 'all', label: '전체' },
+        { key: 'available', label: '판매중' },
+        { key: 'popular', label: '인기' },
+        { key: 'recent', label: '최신' },
+        { key: 'nearby', label: '내 근처' }
+      ],
+      
       posts: [
         {
           id: 1,
           profile: 'https://picsum.photos/100?random=10',
           name: 'PlantLover',
+          userId: 'plantlover123',
+          user_id: 'temp-user-1',
+          verified: true,
+          rating: 4.8,
           image: 'https://picsum.photos/600?random=10',
           title: '몬스테라 알보',
           text: '무늬가 예쁩니다',
           created_at: new Date().toISOString(),
+          date: 'Sep 1',
           price: 30000,
           likes: 43,
           liked: false,
           comments: 8,
-          user_id: 'temp-user-1'
+          bookmarked: false,
+          status: 'available'
         },
         {
           id: 2,
           profile: 'https://picsum.photos/100?random=11',
           name: 'SunshineGreen',
+          userId: 'sunshine_green',
+          user_id: 'temp-user-2',
+          verified: false,
+          rating: 4.2,
           image: 'https://picsum.photos/600?random=11',
           title: '알로카시아',
           text: '잎맥이 선명해서 인테리어에 좋습니다.',
           created_at: new Date().toISOString(),
+          date: 'Sep 2',
           price: 50000,
           likes: 77,
+          liked: true,
+          comments: 5,
+          bookmarked: true,
+          status: 'reserved',
+          tags: ['알로카시아', '아마조니카', '인테리어'],
+          views: 203
+        },
+        {
+          id: 3,
+          profile: 'https://picsum.photos/100?random=12',
+          name: '초록식물마니아',
+          userId: 'green_mania',
+          user_id: 'temp-user-3',
+          verified: true,
+          rating: 4.9,
+          image: 'https://picsum.photos/600?random=12',
+          title: '필로덴드론 핑크 프린세스',
+          text: '핑크색이 정말 예뻐요! 새잎도 계속 나오고 있습니다.',
+          created_at: new Date().toISOString(),
+          date: '2024-09-03',
+          location: '서초구 서초동',
+          price: 120000,
+          likes: 124,
           liked: false,
           comments: 5,
-          user_id: 'temp-user-2'
+          bookmarked: false,
+          status: 'available'
         }
-      ],
-      selectedPostId: null,
-      showComment: false,
-      openChats: []
+      ]
+    }
+  },
+
+  computed: {
+    filteredPosts() {
+      let filtered = this.posts
+
+      if (this.searchQuery) {
+        const query = this.searchQuery.toLowerCase()
+        filtered = filtered.filter(post => 
+          post.title.toLowerCase().includes(query) ||
+          post.text.toLowerCase().includes(query) ||
+          (post.tags && post.tags.some(tag => tag.toLowerCase().includes(query)))
+        )
+      }
+
+      if (this.activeFilter === 'available') {
+        filtered = filtered.filter(post => post.status === 'available')
+      } else if (this.activeFilter === 'popular') {
+        filtered = [...filtered].sort((a, b) => b.likes - a.likes)
+      } else if (this.activeFilter === 'recent') {
+        filtered = [...filtered].sort((a, b) => new Date(b.created_at || b.date) - new Date(a.created_at || a.date))
+      }
+
+      return filtered
+    }
+  },
+
+  watch: {
+    showComment(val) {
+      this.$emit('comment-visibility', val)
     }
   },
 
   methods: {
+    goToWritePost() {
+      this.$router.push('/write')
+    },
+    
+    onSearch() {
+      console.log('검색:', this.searchQuery)
+    },
+    
+    clearSearch() {
+      this.searchQuery = ''
+    },
+    
+    setActiveFilter(filter) {
+      this.activeFilter = filter
+    },
+    
     toggleLike(post) {
       post.liked = !post.liked
       post.likes += post.liked ? 1 : -1
+    },
+
+    toggleBookmark(post) {
+      post.bookmarked = !post.bookmarked
+      console.log('북마크:', post.bookmarked)
     },
 
     goToComments(postId) {
@@ -149,46 +347,82 @@ export default {
       this.showComment = true
     },
 
+    goToProfile(userId) {
+      console.log('프로필 이동:', userId)
+    },
+
+    sharePost(post) {
+      console.log('공유:', post.title)
+      if (navigator.share) {
+        navigator.share({
+          title: post.title,
+          text: post.text,
+          url: window.location.href
+        })
+      }
+    },
+
+    openChat(post) {
+      const chatId = `chat-${post.id}-${Date.now()}`
+      const sellerId = post.userId || post.user_id
+      
+      const existingChat = this.openChats.find(c => c.seller_id === sellerId)
+      if (existingChat) {
+        existingChat.z = zSeed++
+        return
+      }
+
+      const newChat = {
+        id: chatId,
+        title: `${post.name}님과의 채팅`,
+        seller_id: sellerId,
+        visible: true,
+        pos: {
+          x: 20 + (this.openChats.length * 30),
+          y: 20 + (this.openChats.length * 30)
+        },
+        z: zSeed++
+      }
+      this.openChats.push(newChat)
+    },
+
+    closeChat(chatId) {
+      const index = this.openChats.findIndex(chat => chat.id === chatId)
+      if (index !== -1) {
+        this.openChats.splice(index, 1)
+      }
+    },
+
+    buyNow(post) {
+      console.log('바로구매:', post.title)
+      alert(`${post.title} 구매를 진행합니다.`)
+    },
+
+    getStatusText(status) {
+      const statusMap = {
+        'available': '판매중',
+        'reserved': '예약중',
+        'sold': '판매완료'
+      }
+      return statusMap[status] || '판매중'
+    },
+    
     formatPrice(value) {
       return new Intl.NumberFormat('ko-KR').format(value) + '원'
     },
 
-    openChatFor(post) {
-      const id = `post:${post.id}`
-      const title = post.name || '채팅'
-
-      const found = this.openChats.find(c => c.id === id)
-      if (found) {
-        found.visible = true
-        this.focusChat(id)
-        return
-      }
-
-      const room = {
-        id: id,
-        title: title,
-        visible: true,
-        pos: { 
-          x: 20 + (this.openChats.length * 30), 
-          y: 20 + (this.openChats.length * 30)
-        },
-        seller_id: post.user_id,
-        z: ++zSeed
-      }
-
-      this.openChats.push(room)
-      this.focusChat(id)
-    },
-
-    focusChat(id) {
-      const c = this.openChats.find(x => x.id === id)
-      if (c) c.z = ++zSeed
-    },
-
-    closeChat(id) {
-      const idx = this.openChats.findIndex(x => x.id === id)
-      if (idx !== -1) {
-        this.openChats.splice(idx, 1)
+    formatDate(dateString) {
+      if (!dateString) return ''
+      
+      try {
+        const date = new Date(dateString)
+        if (isNaN(date.getTime())) return dateString
+        return date.toLocaleDateString('ko-KR', { 
+          month: 'short', 
+          day: 'numeric' 
+        })
+      } catch {
+        return dateString
       }
     }
   }
@@ -196,133 +430,392 @@ export default {
 </script>
 
 <style scoped>
+.community-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.community-header {
+  margin-bottom: 30px;
+}
+
+.header-content h1 {
+  font-size: 28px;
+  margin-bottom: 8px;
+}
+
+.header-subtitle {
+  color: #666;
+  font-size: 14px;
+}
+
+.search-section {
+  margin: 20px 0;
+}
+
+.search-bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 15px;
+}
+
+.search-icon {
+  color: #999;
+  margin-right: 10px;
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 14px;
+}
+
+.clear-search {
+  background: none;
+  border: none;
+  color: #999;
+  cursor: pointer;
+  font-size: 18px;
+}
+
+.filter-section {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0;
+  overflow-x: auto;
+}
+
+.filter-btn {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  background: white;
+  border-radius: 20px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.3s;
+}
+
+.filter-btn.active {
+  background: #568265;
+  color: white;
+  border-color: #568265;
+}
+
+.write-post-btn {
+  width: 100%;
+  padding: 12px;
+  background: #568265;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 16px;
+  margin: 20px 0;
+}
+
+.loading-container {
+  text-align: center;
+  padding: 40px;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #568265;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.empty-icon {
+  font-size: 64px;
+  margin-bottom: 20px;
+}
+
+.empty-action-btn {
+  margin-top: 20px;
+  padding: 12px 24px;
+  background: #568265;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.posts-container {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 20px;
+}
+
 .post-card {
   background: white;
-  border-radius: 16px;
-  margin: 24px 16px;
-  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  border: 1px solid #eee;
+  border-radius: 12px;
   overflow: hidden;
-  text-align: left;
+  transition: box-shadow 0.3s;
+}
+
+.post-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.post-image-wrapper {
+  position: relative;
 }
 
 .post-body {
-  height: 300px;
+  width: 100%;
+  height: 250px;
   background-size: cover;
   background-position: center;
+  position: relative;
+}
+
+.status-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.status-badge.available {
+  background: #4CAF50;
+  color: white;
+}
+
+.status-badge.reserved {
+  background: #FF9800;
+  color: white;
+}
+
+.status-badge.sold {
+  background: #999;
+  color: white;
+}
+
+.bookmark-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: white;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.bookmark-btn.bookmarked {
+  color: #568265;
 }
 
 .post-header-bar {
+  padding: 15px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 12px 16px 0;
+  align-items: start;
 }
 
 .post-title {
   font-size: 18px;
-  font-weight: bold;
-  color: #333;
+  font-weight: 600;
   margin: 0;
-  text-align: left;
 }
 
 .post-price {
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 20px;
+  font-weight: 700;
   color: #568265;
-  text-align: right;
 }
 
 .date {
+  padding: 0 15px;
   font-size: 12px;
-  color: grey;
-  margin: 4px 16px;
-  text-align: left;
+  color: #999;
+  margin: 0 0 10px 0;
 }
 
 .post-content {
-  padding: 0 16px 8px;
+  padding: 0 15px 15px;
+}
+
+.post-description {
+  color: #666;
   font-size: 14px;
-  color: #333;
-  text-align: left;
+  margin: 0 0 10px 0;
+  line-height: 1.5;
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  font-size: 12px;
+  color: #568265;
+  background: #f0f8f4;
+  padding: 4px 10px;
+  border-radius: 12px;
 }
 
 .post-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px 12px;
+  padding: 15px;
   border-top: 1px solid #eee;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .profile-info {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.profile-wrapper {
+  position: relative;
 }
 
 .profile {
-  background-size: cover;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+}
+
+.verification-badge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  background: #4CAF50;
+  color: white;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  border: 2px solid white;
+}
+
+.profile-details {
+  display: flex;
+  flex-direction: column;
 }
 
 .profile-name {
+  font-weight: 600;
   font-size: 14px;
-  font-weight: bold;
+}
+
+.profile-rating {
+  font-size: 12px;
+  color: #666;
 }
 
 .action-section {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  gap: 12px;
 }
 
-.heart-icon, .comment-icon {
-  width: 20px;
-  height: 20px;
+.action-btn {
+  background: none;
+  border: none;
   cursor: pointer;
-  margin-right: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: #666;
+  font-size: 14px;
 }
 
-.buy-btn-wrapper {
+.action-btn:hover {
+  color: #568265;
+}
+
+.like-btn.liked {
+  color: #e74c3c;
+}
+
+.action-buttons {
   display: flex;
   gap: 10px;
-  padding: 0 16px 16px;
+  padding: 15px;
+  border-top: 1px solid #eee;
 }
 
+.chat-btn,
 .buy-btn {
   flex: 1;
-  background-color: #568265;
-  color: white;
-  font-size: 16px;
-  font-weight: bold;
+  padding: 12px;
   border: none;
   border-radius: 8px;
-  padding: 12px 0;
   cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.buy-btn:hover {
-  background-color: #456b4f;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.3s;
 }
 
 .chat-btn {
-  flex: 1;
-  background-color: white;
-  color: #568265;
-  font-size: 16px;
-  font-weight: bold;
+  background: white;
   border: 2px solid #568265;
-  border-radius: 8px;
-  padding: 12px 0;
-  cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  color: #568265;
 }
 
 .chat-btn:hover {
-  background-color: #f0f5f2;
+  background: #f0f8f4;
+}
+
+.buy-btn {
+  background: #568265;
+  color: white;
+}
+
+.buy-btn:hover {
+  background: #456b4f;
+}
+
+.chat-btn:disabled,
+.buy-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 </style>
