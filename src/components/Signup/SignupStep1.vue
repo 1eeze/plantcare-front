@@ -23,12 +23,12 @@
         </div>
 
         <!-- 카카오 가입 버튼 -->
-        <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
+        <div class="sns-circle-button" @click="handleKakaoLogin('kakao')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
               <div class="gsi-material-button-icon">
-                <img class="kakao-img" src="../../assets/kakao-talk.png" alt="카카오오" />
+                <img class="kakao-img" src="../../assets/kakao-talk.png" alt="카카오" />
               </div>
             </div>
           </button>
@@ -72,17 +72,48 @@
 <script setup>
 const handleNaverLogin = (provider) => {
   console.log(`${provider} SNS 로그인 시도`)
+  window.location.href = 'https://pkplantcare.shop/auth/login/naver'
   // SNS 연동 로직 추가 예정
 }
 
 const handleKakaoLogin = (provider) => {
   console.log(`${provider} SNS 로그인 시도`)
   // SNS 연동 로직 추가 예정
+  const KAKAO_CLIENT_ID = '66a184c4fba998aab4012e9bc72b9f98'
+  const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
+
+  const params = new URLSearchParams({
+    client_id: KAKAO_CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    prompt: 'login'
+  })
+
+  const url = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`
+  console.log('카카오 로그인 URL:', url)
+  console.log('리디렉트 시작...')
+  window.location.href = url
 }
 
 const handleGoogleLogin = (provider) => {
   console.log(`${provider} SNS 로그인 시도`)
   // SNS 연동 로직 추가 예정
+  const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
+  const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
+
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'consent'
+  })
+
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+  console.log('구글 로그인 URL:', url)
+  console.log('리디렉트 시작...')
+  window.location.href = url
 }
 
 const handleAppSignup = () => {

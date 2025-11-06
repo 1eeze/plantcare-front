@@ -46,12 +46,12 @@
         </div>
 
         <!-- 카카오 로그인 버튼 -->
-        <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
+        <div class="sns-circle-button" @click="handleKakaoLogin('kakao')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
               <div class="gsi-material-button-icon">
-                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오오" />
+                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오" />
               </div>
             </div>
           </button>
@@ -96,17 +96,41 @@
 }
 
 const handleKakaoLogin = () => {
+  console.log('카카오 SNS 로그인 시도')
   const KAKAO_CLIENT_ID = '66a184c4fba998aab4012e9bc72b9f98'
   const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
 
-  window.location.href = `https://kauth.kakao.com/oauth/authorize?client_id=${KAKAO_CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code`
+  const params = new URLSearchParams({
+    client_id: KAKAO_CLIENT_ID,
+    redirect_uri: REDIRECT_URI,
+    response_type: 'code',
+    prompt: 'login'
+  })
+
+  const url = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`
+  console.log('카카오 로그인 URL:', url)
+  console.log('리디렉트 시작...')
+  window.location.href = url
 }
 
 const handleGoogleLogin = () => {
+  console.log('구글 SNS 로그인 시도')
   const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
   const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
 
-  window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}&response_type=code&scope=email%20profile`
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'consent'
+  })
+
+  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+  console.log('구글 로그인 URL:', url)
+  console.log('리디렉트 시작...')
+  window.location.href = url
 }
 
   
