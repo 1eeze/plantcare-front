@@ -79,7 +79,7 @@ const handleNaverLogin = (provider) => {
 const handleKakaoLogin = (provider) => {
   console.log(`${provider} SNS 로그인 시도`)
   // SNS 연동 로직 추가 예정
-  const KAKAO_CLIENT_ID = '66a184c4fba998aab4012e9bc72b9f98'
+  const KAKAO_CLIENT_ID = '669f21005ad795a1f4eefcf640191088'
   const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
 
   const params = new URLSearchParams({
