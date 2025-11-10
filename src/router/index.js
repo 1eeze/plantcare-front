@@ -1,6 +1,7 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
-import LoginForm from '@/components/LoginForm.vue'
+import Login from '@/components/Login.vue'
+import { supabase } from '@/utils/supabase'
 import SignupView from '@/components/Signup/SignupView.vue'
 import SignupStep1 from '@/components/Signup/SignupStep1.vue'
 import SignupStep2 from '@/components/Signup/SignupStep2.vue'
@@ -39,7 +40,8 @@ const routes = [
       { 
         path: 'add-plant', 
         name: 'AddPlant',
-        component: AddPlant 
+        component: AddPlant,
+        meta: { requiresAuth: true, showBottomNav: true } 
       },
       { 
         path: 'notification', 
@@ -81,7 +83,7 @@ const routes = [
   {
     path: '/login',
     name: 'Login',
-    component: LoginForm
+    component: Login
   },
   {
     path: '/login-success',
@@ -132,18 +134,35 @@ const router = createRouter({
   routes
 })
 
-// 네비게이션 가드 예시 (필요시 추가)
-// router.beforeEach((to, from, next) => {
-//   if (to.matched.some(record => record.meta.requiresAuth)) {
-//     // 로그인 체크 로직
-//     if (!isAuthenticated()) {
-//       next('/login')
-//     } else {
-//       next()
-//     }
-//   } else {
-//     next()
-//   }
-// })
+/**
+ * 전역 네비게이션 가드
+ * - requiresAuth 라우트: 세션 확인
+ * - DEV: dev@example.com 자동 로그인 1회 시도
+ * - 실패 시 /login 으로 리다이렉트 (원래 목적지는 redirect 쿼리로 보존)
+ */
+router.beforeEach(async (to) => {
+  const needsAuth = to.matched.some(r => r.meta?.requiresAuth)
+  if (!needsAuth) return true
+
+  // 현재 세션 확인
+  const { data: { session } } = await supabase.auth.getSession()
+  if (session) return true
+
+  // DEV 환경이면 자동 로그인 시도
+  if (import.meta.env.DEV) {
+    const { error } = await supabase.auth.signInWithPassword({
+      email: 'dev@example.com',
+      password: 'dev123456'
+    })
+    if (!error) {
+      const { data: { session: s2 } } = await supabase.auth.getSession()
+      if (s2) return true
+    }
+  }
+
+  // 세션 없음 → 로그인 페이지로
+  alert('로그인이 필요합니다.')
+  return { name: 'Login', query: { redirect: to.fullPath } }
+})
 
 export default router

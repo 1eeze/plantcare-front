@@ -169,7 +169,26 @@
 
 <script setup>
 import { supabase } from '@/utils/supabase.js'
+import { useRouter } from 'vue-router'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+
+const router = useRouter()
+
+// 개발모드 자동 세션 확보 (최초 1회)
+async function ensureDevSession() {
+  if (!import.meta.env.DEV) return
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) {
+    try {
+      await supabase.auth.signInWithPassword({
+        email: 'dev@example.com',
+        password: 'dev123456'
+      })
+    } catch (e) {
+      console.error('개발용 자동 로그인 실패:', e)
+    }
+  }
+}
 
 const plant = ref({
   image: null,
@@ -293,77 +312,70 @@ const onFileChange = (e) => {
   }
 }
 
-// 식물 저장
+// ✅ 식물 저장
 const savePlant = async () => {
   if (!canSave.value) return
-  if (!imageFile.value) {
-    alert('이미지 파일이 선택되지 않았습니다.')
-    return
-  }
+  if (!imageFile.value) { alert('이미지 파일이 선택되지 않았습니다.'); return }
 
   saving.value = true
   try {
-    // ✅ 1. 파일 확장자, 경로 생성
+    // (A) 세션 보장(만료 대비)
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      const { error: autoLoginError } = await supabase.auth.signInWithPassword({
+        email: 'dev@example.com',
+        password: 'dev123456'
+      })
+      if (autoLoginError) throw new Error('세션 없음: 자동 로그인 실패')
+    }
+
+    // (B) 업로드 경로/확장자
     const file = imageFile.value
     const fileExt = file.name.split('.').pop()
-    
     const { data: { user } } = await supabase.auth.getUser()
     const userId = user?.id ?? 'anonymous'
-    
-    const filePath = `public/${userId}/${Date.now()}.${fileExt}`
+    const filePath = `${userId}/${Date.now()}.${fileExt}`
 
-    // ✅ 2. 스토리지에 업로드
+    // (C) Storage 업로드 (contentType 지정)
     const { error: uploadError } = await supabase
       .storage
-      .from('Photos') // 버킷 이름
-      .upload(filePath, file)
-
+      .from('Photos')
+      .upload(filePath, file, { contentType: file.type, upsert: false })
     if (uploadError) throw uploadError
 
-    // ✅ 3. publicUrl 가져오기
-    const { data: urlData } = supabase
-      .storage
-      .from('Photos')
-      .getPublicUrl(filePath)
+    // (D) public URL
+    const { data: urlData } = supabase.storage.from('Photos').getPublicUrl(filePath)
     const publicUrl = urlData.publicUrl
 
-    // ✅ 4. DB에 식물 정보 저장
+    // (E) DB insert (RLS 대비 user_id 등 컬럼 포함: 스키마에 맞춰 조정)
     const { error: insertError } = await supabase
       .from('plants')
       .insert({
+        user_id: user?.id ?? null,             // ← RLS가 auth.uid() 요구시 중요
         name: plant.value.name,
         locate: plant.value.location,
         photos: [{ url: publicUrl, is_main: true }],
-        // sensor_data: sensorUuid, // 센서 연결 시 옵션
+        sensor_moisture: sensorData.value.soilMoisture,
+        sensor_light:    sensorData.value.lightLevel,
+        sensor_humidity: sensorData.value.humidity,
+        temperature:     sensorData.value.temperature
       })
-
     if (insertError) throw insertError
 
     alert('식물이 성공적으로 등록되었습니다! 🌱')
-    // TODO: 등록 후 이동 or UI 초기화
+    router.push({ name: 'Home', query: { refresh: Date.now() } })
   } catch (error) {
     console.error('저장 실패:', error)
-    alert('저장 중 오류가 발생했습니다.')
+    alert(`저장 중 오류가 발생했습니다.\n${error?.message ?? ''}`)
   } finally {
     saving.value = false
   }
 }
 
-// 컴포넌트 정리
-onUnmounted(() => {
-  if (sensorInterval) {
-    clearInterval(sensorInterval)
-  }
-  if (plant.value.image && plant.value.image.startsWith('blob:')) {
-    URL.revokeObjectURL(plant.value.image)
-  }
-})
-
-// 개발용: 자동 센서 연결 (실제에서는 제거)
-onMounted(() => {
-  setTimeout(() => {
-    connectSensor()
-  }, 1000)
+// ✅ 최초 진입 시: 세션 보장 + 센서 연결
+onMounted(async () => {
+  await ensureDevSession()
+  setTimeout(() => { connectSensor() }, 1000)
 })
 </script>
 

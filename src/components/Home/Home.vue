@@ -149,11 +149,97 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted, onUnmounted, onActivated } from 'vue'
+import { supabase } from '@/utils/supabase'
 import plant_pic from '../../assets/plant.png'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+let channel = null
+
+// Supabase Realtime — insert/update/delete 시 자동 새로고침
+onMounted(() => {
+  setupRealtime()
+})
+
+async function setupRealtime() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  // 기존 채널이 있다면 정리하고 재구독
+  if (channel) {
+    supabase.removeChannel(channel)
+    channel = null
+  }
+
+  channel = supabase
+    .channel('public:plants') // 채널 이름은 임의 지정 가능
+    // INSERT: 새 카드 즉시 추가
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
+      ({ new: p }) => {
+        plants.value.unshift({
+          id: p.id,
+          name: p.name,
+          image: (p.photos && p.photos[0]?.url) || plant_pic,
+          soilMoisture: p.sensor_moisture ?? 0,
+          lightLevel:   p.sensor_light ?? 0,
+          humidity:     p.sensor_humidity ?? 0,
+          temperature:  p.temperature ?? 0,
+          lastUpdated:  p.updated_at || '',
+          needsAttention: !!p.needs_attention,
+          status: p.status || '상태 양호',
+          display: {
+            moisture: `💧 ${p.sensor_moisture ?? 0}%`,
+            light:    `☀️ ${p.sensor_light ?? 0}%`,
+            humidity: `🌱 ${p.sensor_humidity ?? 0}%`
+          }
+        })
+      }
+    )
+    // UPDATE: 값만 교체
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
+      ({ new: p }) => {
+        const i = plants.value.findIndex(x => x.id === p.id)
+        if (i !== -1) {
+          plants.value[i] = {
+            ...plants.value[i],
+            soilMoisture: p.sensor_moisture ?? 0,
+            lightLevel:   p.sensor_light ?? 0,
+            humidity:     p.sensor_humidity ?? 0,
+            temperature:  p.temperature ?? 0,
+            lastUpdated:  p.updated_at || '',
+            status:       p.status || plants.value[i].status,
+            needsAttention: !!p.needs_attention,
+          }
+        }
+      }
+    )
+    // DELETE: 목록에서 제거
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
+      ({ old }) => {
+        plants.value = plants.value.filter(x => x.id !== old.id)
+      }
+    )
+    .subscribe()
+}
+
+async function ensureDevSession() {
+  if (import.meta.env.DEV) {
+    const { data: { session } } = await supabase.auth.getSession()
+    if (!session) {
+      await supabase.auth.signInWithPassword({
+        email: 'dev@example.com',
+        password: 'dev123456'
+      })
+    }
+  }
+}
 
 const showMenu = ref(false)
 const userName = ref('식물집사')
@@ -170,60 +256,64 @@ const weather = ref({
 
 const todayTip = ref('오늘처럼 맑은 날에는 식물을 창가 근처로 옮겨주세요!')
 
-const plants = ref([
-  {
-    id: 1,
-    name: '몬스테라',
-    image: plant_pic,
-    soilMoisture: 25,      // 토양 습도 (%)
-    lightLevel: 85,        // 조도 (%)
-    humidity: 45,          // 공기 습도 (%)
-    temperature: 22,       // 온도 (°C)
-    lastUpdated: '2024-06-24 14:30',
-    needsAttention: true,
-    status: '물 부족',
-    display: {
-      moisture: '💧 25%',
-      light: '☀️ Sunny (85%)',
-      humidity: '🌱 45%'
-    }
-  },
-  {
-    id: 2,
-    name: '칼라데아',
-    image: plant_pic,
-    soilMoisture: 75,
-    lightLevel: 60,
-    humidity: 65,
-    temperature: 24,
-    lastUpdated: '2024-06-24 14:25',
-    needsAttention: false,
-    status: '상태 양호',
-    display: {
-      moisture: '💧 75%',
-      light: '🌤️ Bright (60%)',
-      humidity: '🌱 65%'
-    }
-  },
-  {
-    id: 3,
-    name: '고무나무',
-    image: plant_pic,
-    soilMoisture: 55,
-    lightLevel: 40,
-    humidity: 50,
-    temperature: 23,
-    lastUpdated: '2024-06-24 14:20',
-    needsAttention: false,
-    status: '조도 부족',
-    display: {
-      moisture: '💧 55%',
-      light: '🌑 Dark (40%)',
-      humidity: '🌱 50%'
-    }
-  }
-])
+const plants = ref([])
 
+// DB → UI 데이터 매핑
+const loadPlants = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  
+  const { data, error } = await supabase
+  .from('plants')
+  .select(`
+    id, user_id, name, locate, photos,
+    sensor_moisture, sensor_light, sensor_humidity, temperature,
+    created_at, updated_at, needs_attention, status
+  `)
+
+  .eq('user_id', user.id)
+  .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('식물 목록 로드 실패:', error)
+    return
+  }
+
+  plants.value = (data || []).map(p => ({
+    id: p.id,
+    name: p.name,
+    image: (p.photos && p.photos[0]?.url) || plant_pic,
+    soilMoisture: p.sensor_moisture ?? 0,
+    lightLevel: p.sensor_light ?? 0,
+    humidity: p.sensor_humidity ?? 0,
+    temperature: p.temperature ?? 0,
+    lastUpdated: p.updated_at || '',
+    needsAttention: !!p.needs_attention,
+    status: p.status || '상태 양호',
+    display: {
+      moisture: `💧 ${p.sensor_moisture ?? 0}%`,
+      light: `☀️ ${p.sensor_light ?? 0}%`,
+      humidity: `🌱 ${p.sensor_humidity ?? 0}%`
+    }
+  }))
+}
+
+onMounted(async () => {
+  await ensureDevSession()
+  await loadPlants()
+  await setupRealtime()
+})
+
+onActivated(async () => {
+  await loadPlants()
+})
+
+onUnmounted(() => {
+  if (channel) {
+    supabase.removeChannel(channel)
+    channel = null
+  }
+})
 
 const todayTasks = ref([
   {
