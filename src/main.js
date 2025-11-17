@@ -17,7 +17,7 @@ async function ensureDevSession() {
 
 async function bootstrap() {
   if (import.meta.env.DEV) {
-    await ensureDevSession();   // 함수 안에서 await → OK
+    // await ensureDevSession();   // 함수 안에서 await → OK
   }
   createApp(App).use(router).mount('#app');
 }

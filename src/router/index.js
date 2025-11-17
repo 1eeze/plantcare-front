@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from 'vue-router'
-// (수정) Login.vue -> LoginPage.vue로 경로 변경
 import LoginPage from '@/components/LoginPage.vue' 
 import { supabase } from '@/utils/supabase'
 import SignupView from '@/components/Signup/SignupView.vue'
@@ -8,7 +7,6 @@ import SignupStep2 from '@/components/Signup/SignupStep2.vue'
 import SignupStep3 from '@/components/Signup/SignupStep3.vue'
 import SignupComplete from '@/components/Signup/SignupComplete.vue'
 import MainLayout from '@/components/MainLayout.vue'
-// (수정) Home.vue -> HomePage.vue로 경로 변경
 import HomePage from '@/components/Home/HomePage.vue' 
 import PlantDetail from '@/components/Home/PlantDetail.vue'
 import AddPlant from '@/components/Home/AddPlant.vue'
@@ -17,10 +15,10 @@ import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
 import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
 import WritePost from '@/components/Community/WritePost.vue'
-// (수정) ProfilePage.vue로 경로 변경
 import ProfilePage from '@/components/Profile/ProfilePage.vue'
 import ProfileEdit from '@/components/Profile/ProfileEdit.vue';
 import LoginSuccess from '@/components/LoginSuccess.vue'
+import UpdatePassword from '@/components/UpdatePassword.vue'
 
 const routes = [
   {
@@ -29,8 +27,8 @@ const routes = [
     children: [
       { 
         path: '', 
-        name: 'HomePage', // (팀원 변경 사항)
-        component: HomePage, // (수정)
+        name: 'HomePage',
+        component: HomePage,
         meta: { showBottomNav: true }
       },
       { 
@@ -74,13 +72,13 @@ const routes = [
       },
       { 
         path: 'profile', 
-        name: 'ProfilePage', // (팀원 변경 사항)
-        component: ProfilePage, // (수정)
+        name: 'ProfilePage',
+        component: ProfilePage,
         meta: { requiresAuth: true }
       },
       {
         path: 'profile/edit',
-        name: 'ProfileEdit', // (팀원 추가)
+        name: 'ProfileEdit',
         component: ProfileEdit,
         meta: { requiresAuth: true }
       }
@@ -88,8 +86,13 @@ const routes = [
   },
   {
     path: '/login',
-    name: 'LoginPage', // (팀원 변경 사항)
-    component: LoginPage // (수정)
+    name: 'LoginPage',
+    component: LoginPage
+  },
+  {
+    path: '/update-password',
+    name: 'UpdatePassword',
+    component: UpdatePassword
   },
   {
     path: '/login-success',
@@ -97,7 +100,7 @@ const routes = [
     component: LoginSuccess
   },
   {
-    path: '/auth/callback', // (팀원 추가)
+    path: '/auth/callback',
     name: 'AuthCallback',
     component: LoginSuccess
   },
@@ -144,7 +147,6 @@ const router = createRouter({
   routes
 })
 
-// (우리 코드) "문지기" 로직 (팀원의 이름 변경 사항 반영)
 router.beforeEach(async (to, from, next) => {
   
   // 1. 공개 페이지 ('/auth/callback' 포함)
@@ -160,15 +162,15 @@ router.beforeEach(async (to, from, next) => {
   if (!session) {
     // 세션이 없으면 로그인 페이지로 보냄
     next({ 
-      name: 'LoginPage', // (수정)
+      name: 'LoginPage',
       query: { redirect: to.fullPath } 
     })
     return
   }
 
   // 3. 로그인한 사용자가 /login으로 가면 홈으로
-  if (to.name === 'LoginPage') { // (수정)
-    next({ name: 'HomePage' }) // (수정)
+  if (to.name === 'LoginPage') {
+    next({ name: 'HomePage' })
     return
   }
 
