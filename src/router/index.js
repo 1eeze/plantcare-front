@@ -96,6 +96,11 @@ const routes = [
     component: LoginSuccess
   },
   {
+    path: '/auth/callback',
+    name: 'AuthCallback',
+    component: LoginSuccess
+  },
+  {
     path: '/signup',
     component: SignupView,
     children: [

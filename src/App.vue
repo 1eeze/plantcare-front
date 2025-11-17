@@ -57,6 +57,11 @@ body, html, #app {
   box-sizing: border-box;
 }
 
+body {
+  background: linear-gradient(135deg, #e8f9ef, #f7fff9);
+  min-height: 100vh;
+}
+
 /* 업로드 모달 */
 .upload-modal {
   position: fixed;
