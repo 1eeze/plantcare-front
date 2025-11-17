@@ -1,6 +1,5 @@
-// src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
-import LoginPage from '@/components/LoginPage.vue'
+import LoginPage from '@/components/LoginPage.vue' 
 import { supabase } from '@/utils/supabase'
 import SignupView from '@/components/Signup/SignupView.vue'
 import SignupStep1 from '@/components/Signup/SignupStep1.vue'
@@ -8,7 +7,7 @@ import SignupStep2 from '@/components/Signup/SignupStep2.vue'
 import SignupStep3 from '@/components/Signup/SignupStep3.vue'
 import SignupComplete from '@/components/Signup/SignupComplete.vue'
 import MainLayout from '@/components/MainLayout.vue'
-import HomePage from '@/components/Home/HomePage.vue'
+import HomePage from '@/components/Home/HomePage.vue' 
 import PlantDetail from '@/components/Home/PlantDetail.vue'
 import AddPlant from '@/components/Home/AddPlant.vue'
 import Notification from '@/components/Home/Notification.vue'
@@ -19,7 +18,7 @@ import WritePost from '@/components/Community/WritePost.vue'
 import ProfilePage from '@/components/Profile/ProfilePage.vue'
 import ProfileEdit from '@/components/Profile/ProfileEdit.vue';
 import LoginSuccess from '@/components/LoginSuccess.vue'
-
+import UpdatePassword from '@/components/UpdatePassword.vue'
 
 const routes = [
   {
@@ -91,6 +90,11 @@ const routes = [
     component: LoginPage
   },
   {
+    path: '/update-password',
+    name: 'UpdatePassword',
+    component: UpdatePassword
+  },
+  {
     path: '/login-success',
     name: 'LoginSuccess',
     component: LoginSuccess
@@ -131,7 +135,6 @@ const routes = [
       }
     ]
   },
-  // 404 페이지 처리
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
@@ -144,45 +147,54 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach(async (to) => {
-  // 1) 현재 로그인 상태 먼저 확인
+router.beforeEach(async (to, from, next) => {
+  
+  // 1. 공개 페이지 ('/auth/callback' 포함)
+  const publicPaths = ['/login', '/signup', '/login-success', '/auth/callback']
+  if (publicPaths.includes(to.path) || to.path.startsWith('/signup')) {
+    next() // 통과
+    return
+  }
+
+  // 2. 세션 확인
   const { data: { session } } = await supabase.auth.getSession()
-  const isLoggedIn = !!session
 
-  // 2) 이미 로그인한 사용자가 /login 으로 가려 하면 → 홈으로 보내기
-  if (to.name === 'LoginPage' && isLoggedIn) {
-    return { name: 'HomePage' }
-  }
-
-  // 3) 이 라우트(또는 그 자식들) 중 하나라도 requiresAuth:true 가 있는지 검사
-  const needsAuth = to.matched.some(r => r.meta?.requiresAuth)
-  if (!needsAuth) {
-    // 로그인 필요 없는 페이지면 그냥 통과
-    return true
-  }
-
-  // 4) 로그인 필요한 페이지인데, 이미 로그인 되어 있으면 통과
-  if (isLoggedIn) return true
-
-  // 5) DEV 환경이면 자동 로그인 시도 (지금 있던 코드 유지)
-  if (import.meta.env.DEV) {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: 'dev@example.com',
-      password: 'dev123456'
+  if (!session) {
+    // 세션이 없으면 로그인 페이지로 보냄
+    next({ 
+      name: 'LoginPage',
+      query: { redirect: to.fullPath } 
     })
-    if (!error) {
-      const { data: { session: s2 } } = await supabase.auth.getSession()
-      if (s2) return true
-    }
+    return
   }
 
-  // 6) 여기까지 왔다는 건:
-  //    - 로그인 필요 페이지 (needsAuth === true)
-  //    - 세션 없음
-  alert('로그인이 필요합니다.')
-  return { 
-    name: 'LoginPage',               // ✅ 이름 수정
-    query: { redirect: to.fullPath } // 로그인 후 다시 돌아올 경로
+  // 3. 로그인한 사용자가 /login으로 가면 홈으로
+  if (to.name === 'LoginPage') {
+    next({ name: 'HomePage' })
+    return
+  }
+
+  // 4. 닉네임이 있는지 확인
+  try {
+    const { data: profile, error } = await supabase
+      .from('Users')
+      .select('name')
+      .eq('id', session.user.id)
+      .single()
+
+    if (error && error.code !== 'PGRST116') throw error // '행 없음' 외의 에러
+
+    if ((!profile || !profile.name) && !to.path.startsWith('/signup')) {
+      // 닉네임 없으면 강제 이동
+      alert('추가 정보(닉네임) 입력이 필요합니다.')
+      next('/signup/step2')
+    } else {
+      // 닉네임 있으면 최종 통과
+      next() 
+    }
+  } catch (error) {
+    console.error('프로필 조회 에러 (라우트 가드):', error)
+    next() // 에러 시 일단 통과
   }
 })
 

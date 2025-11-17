@@ -16,10 +16,11 @@ export default {
 
 <style scoped>
 .main-layout {
-  padding-bottom: 60px; /* 하단 네비 높이만큼 확보 */
+  padding-bottom: 80px; /* 하단 네비 높이만큼 확보 */
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
+  box-sizing: border-box;
 }
 
 </style>

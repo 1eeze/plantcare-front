@@ -9,7 +9,6 @@
       
       <div class="sns-circle-group">
 
-        <!-- 네이버 가입 버튼 -->
         <div class="sns-circle-button" @click="handleNaverLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -22,7 +21,6 @@
           <span>네이버</span>
         </div>
 
-        <!-- 카카오 가입 버튼 -->
         <div class="sns-circle-button" @click="handleKakaoLogin('kakao')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -35,7 +33,6 @@
           <span>카카오</span>
         </div>
 
-        <!-- 구글 가입 버튼 -->
         <div class="sns-circle-button" @click="handleGoogleLogin('google')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -57,68 +54,58 @@
 
       <div class="divider"><span>또는</span></div>
 
-      <button class="app-signup-button" @click="$router.push('/signup-email')">
+      <button class="app-signup-button" @click="emit('next')">
         Plant Care으로 회원가입
       </button>
 
       <p class="login-link">
         이미 계정이 있으신가요?
-        <a href="/login" class="login-text">로그인</a>
+        <a href="/login" @click.prevent="router.push('/login')" class="login-text">로그인</a>
       </p>
     </div>
   </div>
 </template>
 
 <script setup>
-const handleNaverLogin = (provider) => {
-  console.log(`${provider} SNS 로그인 시도`)
-  window.location.href = 'https://pkplantcare.shop/auth/login/naver'
-  // SNS 연동 로직 추가 예정
-}
+// (우리 코드) defineEmits는 자동으로 import되므로 제거
+import { } from 'vue' 
+import { supabase } from '@/utils/supabase.js'
+import { useRouter } from 'vue-router'
 
-const handleKakaoLogin = (provider) => {
-  console.log(`${provider} SNS 로그인 시도`)
-  // SNS 연동 로직 추가 예정
-  const KAKAO_CLIENT_ID = '669f21005ad795a1f4eefcf640191088'
-  const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
+const emit = defineEmits(['next'])
+const router = useRouter()
 
-  const params = new URLSearchParams({
-    client_id: KAKAO_CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    prompt: 'login'
+// (우리 코드) supabase.auth.signInWithOAuth를 사용하는 로직을 최종본으로 선택
+const handleNaverLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'naver',
+    options: {
+      redirectTo: window.location.origin
+    }
   })
-
-  const url = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`
-  console.log('카카오 로그인 URL:', url)
-  console.log('리디렉트 시작...')
-  window.location.href = url
 }
 
-const handleGoogleLogin = (provider) => {
-  console.log(`${provider} SNS 로그인 시도`)
-  // SNS 연동 로직 추가 예정
-  const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
-  const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
-
-  const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-    prompt: 'consent'
+const handleKakaoLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'kakao',
+    options: {
+      redirectTo: window.location.origin
+    }
   })
-
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-  console.log('구글 로그인 URL:', url)
-  console.log('리디렉트 시작...')
-  window.location.href = url
 }
 
+const handleGoogleLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin
+    }
+  })
+}
+
+// (참고: handleAppSignup은 현재 사용되지 않음)
 const handleAppSignup = () => {
   console.log('앱이름으로 회원가입 버튼 클릭')
-  // 이메일 회원가입 로직 또는 이동
 }
 </script>
 
@@ -307,4 +294,3 @@ h2 {
   cursor: pointer;
 }
 </style>
-

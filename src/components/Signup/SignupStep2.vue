@@ -18,6 +18,7 @@
     </div>
   
     <!-- 닉네임 입력 -->
+     <!-- 속성 name에 저장 -->
     <div class="nickname-input-wrapper">
       <input
         v-model="nickname"
@@ -43,8 +44,9 @@
  
 <script setup>
 import { ref } from 'vue'
+import { supabase } from '@/utils/supabase.js' // 1. 이 줄을 추가합니다.
 const emit = defineEmits(['next', 'prev'])
-  
+
 const nickname = ref('')
 const imageFile = ref(null)
 const imageUrl = ref(null)
@@ -60,8 +62,56 @@ const onImageChange = (event) => {
 const goBack = () => {
   emit('prev')  // 상위 컴포넌트에서 이전 단계로 이동
 }
-const goNext = () => {
-  emit('next')  // 추후 formData 형태로 DB 서버에 POST 요청 전송 추가
+const goNext = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error("사용자 정보를 찾을 수 없습니다.")
+
+    let avatarUrl = null // 1. 아바타 URL 변수 초기화
+
+    // 2. 이미지 파일이 선택되었다면 업로드
+    if (imageFile.value) {
+      const file = imageFile.value
+      const fileExt = file.name.split('.').pop()
+      const filePath = `${user.id}/profile.${fileExt}` // 예: 'user-id/profile.png'
+
+      // 1단계에서 만든 'avatars' 버킷에 업로드
+      const { error: uploadError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { 
+          upsert: true // 덮어쓰기 허용
+        })
+
+      if (uploadError) throw uploadError
+
+      // 3. 업로드된 이미지의 공개 URL 가져오기
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+
+      if (!urlData) throw new Error('이미지 URL을 가져오지 못했습니다.')
+      avatarUrl = urlData.publicUrl
+    }
+
+    // 4. Users 테이블에 닉네임과 아바타 URL을 함께 저장 (upsert)
+    const { error: upsertError } = await supabase
+      .from('Users')
+      .upsert({ 
+        id: user.id,
+        name: nickname.value,
+        email: user.email,
+        avatar_url: avatarUrl // 2단계에서 만든 컬럼에 URL 저장
+      })
+      .select()
+
+    if (upsertError) throw upsertError
+
+    emit('next') // 성공 시 다음 단계로
+
+  } catch (error) {
+    console.error('프로필 저장 에러:', error.message)
+    alert('프로필 저장 중 오류가 발생했습니다: ' + error.message)
+  }
 }
 </script>
  

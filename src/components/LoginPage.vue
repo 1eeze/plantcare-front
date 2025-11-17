@@ -16,7 +16,8 @@
           로그인유지
         </label>
         <div class="find-links">
-          <a href="#">아이디 찾기</a> | <a href="#">비밀번호 찾기</a>
+          <a href="#">아이디 찾기</a> | 
+          <a href="#" @click.prevent="showResetModal = true">비밀번호 찾기</a>
         </div>
       </div>
   
@@ -29,7 +30,6 @@
         </div>
       <div class="sns-circle-group">
 
-        <!-- 네이버 로그인 버튼 -->
         <div class="sns-circle-button" @click="handleNaverLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -42,20 +42,18 @@
           <span>네이버</span>
         </div>
 
-        <!-- 카카오 로그인 버튼 -->
-        <div class="sns-circle-button" @click="handleKakaoLogin('kakao')">
+        <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
               <div class="gsi-material-button-icon">
-                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오" />
+                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오오" />
               </div>
             </div>
           </button>
           <span>카카오</span>
         </div>
 
-        <!-- 구글 로그인 -->
         <div class="sns-circle-button" @click="handleGoogleLogin('google')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -76,9 +74,35 @@
       </div>
       </div>
     </div>
-  </template>
+
+    <div v-if="showResetModal" class="modal-overlay" @click="showResetModal = false">
+      <div class="modal-content" @click.stop>
+        <button @click="showResetModal = false" class="modal-close-btn">✕</button>
+        <h3>비밀번호 찾기</h3>
+        <p class="modal-subtitle">가입한 이메일 주소를 입력하시면<br>비밀번호 재설정 링크를 보내드립니다.</p>
+        
+        <div class="input-group">
+          <input 
+            type="email" 
+            placeholder="가입한 이메일을 입력하세요" 
+            v-model="resetEmail"
+            @keyup.enter="handlePasswordReset"
+          />
+        </div>
+        
+        <button 
+          @click="handlePasswordReset" 
+          :disabled="isSendingLink" 
+          class="modal-submit-btn"
+        >
+          {{ isSendingLink ? '전송 중...' : '재설정 링크 받기' }}
+        </button>
+      </div>
+    </div>
+</template>
   
   <script setup>
+  import { supabase } from '@/utils/supabase.js'
   import { ref } from 'vue'
   import { useRouter } from 'vue-router'
 
@@ -88,62 +112,93 @@
   const secureLogin = ref(false)
   const router = useRouter()
 
-  const handleNaverLogin = () => {
-  window.location.href = 'https://pkplantcare.shop/auth/login/naver'
-}
+  // 비밀번호 재설정 모달을 위한 ref
+  const showResetModal = ref(false)
+  const resetEmail = ref('')
+  const isSendingLink = ref(false)
 
-const handleKakaoLogin = () => {
-  console.log('카카오 SNS 로그인 시도')
-  const KAKAO_CLIENT_ID = '669f21005ad795a1f4eefcf640191088'
-  const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
+  // Supabase 비밀번호 재설정 함수
+  const handlePasswordReset = async () => {
+    if (!resetEmail.value) {
+      alert('이메일을 입력해주세요.')
+      return
+    }
+    
+    isSendingLink.value = true
+    try {
+        // Supabase의 비밀번호 재설정 함수 호출
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail.value, {
+        // 사용자가 링크를 클릭한 후 돌아올 페이지 (새 비밀번호 설정 페이지)
+        redirectTo: `${window.location.origin}/update-password`
+      })
 
-  const params = new URLSearchParams({
-    client_id: KAKAO_CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    prompt: 'login'
-  })
+      if (error) {
+        throw error
+      }
 
-  const url = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`
-  console.log('카카오 로그인 URL:', url)
-  console.log('리디렉트 시작...')
-  window.location.href = url
-}
+      alert('비밀번호 재설정 링크를 이메일로 보냈습니다. 메일함을 확인해주세요.')
+      showResetModal.value = false
+      resetEmail.value = ''
 
-const handleGoogleLogin = () => {
-  console.log('구글 SNS 로그인 시도')
-  const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
-  const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
+    } catch (error) {
+      console.error('비밀번호 재설정 에러:', error.message)
+      alert('오류가 발생했습니다: ' + error.message)
+    } finally {
+      isSendingLink.value = false
+    }
+  }
 
-  const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-    prompt: 'consent'
-  })
+  // redirectTo가 포함된 Supabase 클라이언트 방식 사용
+  const handleNaverLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'naver',
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+  }
 
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-  console.log('구글 로그인 URL:', url)
-  console.log('리디렉트 시작...')
-  window.location.href = url
-}
+  const handleKakaoLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'kakao',
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+  }
 
+  const handleGoogleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+  }
   
-  const handleLogin = () => {
-    console.log('로그인', userId.value, userPassword.value, '로그인 유지:', secureLogin.value)
-    // TODO: 로그인 API 연동 또는 인증 로직 추가
-    // 테스트용 간단한 로그인 조건
-    if (userId.value === 'test' && userPassword.value === '1234') {
-      router.push('/community') // 테스트 페이지로 이동
-    } else {
-      alert('아이디 또는 비밀번호가 올바르지 않습니다.')
+  // 실제 이메일 로그인 기능
+  const handleLogin = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: userId.value,
+        password: userPassword.value,
+      })
+
+      if (error) {
+        console.error('로그인 에러:', error.message)
+        alert('아이디 또는 비밀번호가 올바르지 않습니다.')
+      } else {
+        console.log('로그인 성공:', data)
+        router.push('/community')
+      }
+    } catch (error) {
+      console.error('알 수 없는 에러:', error)
+      alert('로그인 중 알 수 없는 오류가 발생했습니다.')
     }
   }
   
   const goToSignup = () => {
-  router.push('/signup')
+    router.push('/signup')
   }
   </script>
   
@@ -335,6 +390,78 @@ button {
   width: 90%;
   height: 90%;
   object-fit: contain;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 20px;
+}
+
+.modal-content {
+  background: white;
+  padding: 28px 24px 24px;
+  border-radius: 16px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  position: relative;
+  box-sizing: border-box;
+}
+
+.modal-close-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #999;
+  cursor: pointer;
+}
+
+.modal-content h3 {
+  text-align: center;
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: #2c3e50;
+}
+
+.modal-subtitle {
+  text-align: center;
+  font-size: 14px;
+  color: #666;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+.modal-content .input-group {
+  margin-bottom: 20px;
+}
+
+.modal-submit-btn {
+  width: 100%;
+  padding: 12px;
+  border-radius: 6px;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  background-color: #568265;
+  color: white;
+  transition: background-color 0.3s ease;
+}
+
+.modal-submit-btn:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
 }
 
 </style>
