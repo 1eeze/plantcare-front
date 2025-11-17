@@ -1,5 +1,16 @@
 <template>
   <div class="home">
+    <!-- 🔍 AI 분석 전체 로딩 오버레이 -->
+    <div v-if="analyzingPest" class="analyzing-overlay">
+      <div class="analyzing-box">
+        <div class="spinner"></div>
+        <p class="analyzing-title">AI가 병충해를 분석 중이에요…</p>
+        <p class="analyzing-desc">
+          처음 호출은 서버를 깨우느라 20~30초 정도 걸릴 수 있어요 🌱
+        </p>
+      </div>
+    </div>
+
     <!-- 사이드 메뉴 오버레이 -->
     <div v-if="showMenu" class="menu-overlay" @click="toggleMenu"></div>
     
@@ -145,16 +156,97 @@
         <p>오늘은 할 일이 없습니다!</p>
       </div>
     </div>
+
+        <!-- 촬영 / 사진 선택 모달 -->
+    <div v-if="showCameraChoice" class="camera-choice-overlay">
+      <div class="camera-choice-sheet">
+        <p class="camera-choice-title">사진을 어떻게 가져올까요?</p>
+        <button class="camera-choice-btn" @click="takePhoto">📷 사진 촬영</button>
+        <button class="camera-choice-btn" @click="pickFromGallery">🖼 갤러리에서 선택</button>
+        <button class="camera-choice-cancel" @click="showCameraChoice = false">취소</button>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, onActivated } from 'vue'
+import { ref, onMounted, onUnmounted, onActivated } from 'vue'
 import { supabase } from '@/utils/supabase'
 import plant_pic from '../../assets/plant.png'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+const analyzingPest = ref(false)      // 로딩 스피너용
+const pestResult = ref(null)          // 최근 분석 결과
+const pestError = ref('') 
+
+const PEST_DICTIONARY = {
+  "Spodoptera_litura_egg": {
+    kr_name: "담배거세나방 알",
+    description: "잎 뒷면에 무더기로 산란하며, 부화한 유충이 잎을 갉아먹습니다."
+  },
+  "Helicoverpa_armigera_larva": {
+    kr_name: "담배나방 애벌레 (면화다래나방)",
+    description: "담배, 목화, 토마토 등 다양한 작물의 잎과 열매를 갉아먹는 심각한 해충입니다."
+  },
+  // TODO: 나머지 클래스들도 여기에 추가
+  "default": {
+    kr_name: "알 수 없는 병충해",
+    description: "데이터베이스에 등록되지 않은 정보입니다."
+  }
+}
+// 에러 메시지
+
+async function analyzePest(imageFile) {
+  const API_URL = "https://detectbug-740384497388.asia-southeast1.run.app/predict"
+
+  const formData = new FormData()
+  formData.append("file", imageFile)
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error(`API 서버 오류: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log("AI 원본 응답:", data)
+
+    if (data.predictions && data.predictions.length > 0) {
+      const firstPrediction = data.predictions[0]
+      const englishName = firstPrediction.class_name
+
+      let pestInfo = PEST_DICTIONARY[englishName]
+      if (!pestInfo) {
+        pestInfo = PEST_DICTIONARY["default"]
+      }
+
+      return {
+        kr_name: pestInfo.kr_name,
+        description: pestInfo.description,
+        confidence: firstPrediction.confidence,
+        bbox: firstPrediction.bbox
+      }
+    } else {
+      return {
+        kr_name: "탐지된 병충해 없음",
+        description: "이미지에서 병충해가 발견되지 않았습니다.",
+      }
+    }
+  } catch (err) {
+    console.error("AI 판별 실패:", err)
+    return {
+      kr_name: "판별 오류",
+      description: "AI 서버에 연결 중 오류가 발생했습니다."
+    }
+  }
+}
+
 let channel = null
 
 // Supabase Realtime — insert/update/delete 시 자동 새로고침
@@ -248,13 +340,88 @@ const hasNotifications = ref(true)
 const notificationCount = ref(3)
 
 const weather = ref({
-  temp: 23,
-  description: '맑음',
-  humidity: 65,
-  uv: '보통'
+  temp: 0,
+  description: '로딩 중…',
+  humidity: 0,
+  uv: '-'
 })
 
-const todayTip = ref('오늘처럼 맑은 날에는 식물을 창가 근처로 옮겨주세요!')
+const loadingWeather = ref(false)
+
+function isDaytime(cur) {
+  if (!cur?.dt || !cur?.sunrise || !cur?.sunset) return true
+  return cur.dt >= cur.sunrise && cur.dt <= cur.sunset
+}
+
+function tipFromWeather({ temp, humidity, uvi, weatherId, day }) {
+  // 1) 온도 기반
+  if (temp <= 0) return '기온이 매우 낮아요. 찬바람을 피하고 물주는 간격을 늘려주세요.'
+  if (temp >= 30) return '더운 날씨예요. 통풍을 잘 시켜주고 갑작스러운 직사광선은 피해주세요.'
+
+  // 2) 습도 기반
+  if (humidity <= 35) return '실내가 많이 건조해요. 가습기나 물트레이로 습도를 조금 올려주세요.'
+  if (humidity >= 75) return '습도가 높아요. 과습으로 인한 뿌리 문제를 주의해주세요.'
+
+  // 3) 자외선/날씨 코드 기반
+  const g = Math.floor((weatherId || 800) / 100)
+  if (uvi >= 6 && day) return '자외선이 강한 날이에요. 햇빛에 약한 식물은 창가에서 조금 떨어뜨려 두세요.'
+  if ([2, 3, 5].includes(g)) return '비가 오는 날이에요. 흙이 마르기 전까지는 물주기를 잠시 쉬어주세요.'
+  if (g === 6) return '눈 또는 진눈깨비가 오는 날이에요. 찬 공기를 직접 맞지 않게 해주세요.'
+  if (weatherId === 800 && day) return '맑고 화창한 날이에요. 광을 좋아하는 식물은 창가 근처로 옮겨보세요.'
+
+  // 4) 기본 문구
+  if (day) return '오늘은 흙 상태를 먼저 확인하고 필요한 식물에만 물을 줘보세요.'
+  return '밤에는 물주기보단 통풍과 온도 관리를 신경 써주세요.'
+}
+
+async function loadWeather() {
+  loadingWeather.value = true
+  try {
+    // ✅ 1) 사용자 위치 가져오기 (없으면 서울)
+    const coords = await new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        return resolve({ lat: 37.5665, lon: 126.9780 }) // 서울 좌표
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => resolve({ lat: 37.5665, lon: 126.9780 }),
+        { enableHighAccuracy: true, timeout: 5000 }
+      )
+    })
+
+    // ✅ 2) OpenWeather One Call 3.0 API 호출
+    const key = import.meta.env.VITE_OWM_KEY
+    const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${coords.lat}&lon=${coords.lon}&units=metric&lang=kr&exclude=minutely,hourly,daily,alerts&appid=${key}`
+
+    const res = await fetch(url)
+    const data = await res.json()
+
+    // ✅ 3) 데이터 반영
+    const cur = data.current
+    weather.value = {
+      temp: Math.round(cur.temp),
+      description: cur.weather?.[0]?.description ?? '정보 없음',
+      humidity: cur.humidity ?? 0,
+      uv: cur.uvi ?? '-'
+    }
+
+    todayTip.value = tipFromWeather({
+      temp: cur.temp,
+      humidity: cur.humidity,
+      uvi: cur.uvi ?? 0,
+      weatherId: cur.weather?.[0]?.id ?? 800,
+      day: isDaytime(cur)
+    })
+
+    console.log('날씨:', weather.value)
+  } catch (err) {
+    console.error('날씨 불러오기 실패:', err)
+  } finally {
+    loadingWeather.value = false
+  }
+}
+
+const todayTip = ref('오늘의 날씨에 맞춰 식물 관리 팁을 불러오는 중이에요.')
 
 const plants = ref([])
 
@@ -302,6 +469,7 @@ onMounted(async () => {
   await ensureDevSession()
   await loadPlants()
   await setupRealtime()
+  await loadWeather()
 })
 
 onActivated(async () => {
@@ -338,18 +506,91 @@ const toggleMenu = () => {
   showMenu.value = !showMenu.value
 }
 
+const showCameraChoice = ref(false)   // 촬영/선택 모달 표시 여부
+
+
 const openCamera = () => {
+  showCameraChoice.value = true
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'image/*'
   input.capture = 'environment'
-  input.onchange = (e) => {
+
+  input.onchange = async (e) => {
     const file = e.target.files[0]
-    if (file) {
-      console.log('이미지 선택됨:', file.name)
-      // 이미지 처리 로직
-    }
+    if (!file) return
+
+    console.log('이미지 선택됨:', file.name)
+
+    analyzingPest.value = true
+    pestError.value = ''
+    pestResult.value = null
+
+    // 콜드 스타트 때문에 처음엔 오래 걸릴 수 있음
+    const result = await analyzePest(file)
+
+    pestResult.value = result
+    analyzingPest.value = false
+
+    // 일단은 알림/console로 확인 (나중에 전용 화면/모달로 예쁘게)
+    const confidenceText = result.confidence != null
+      ? `신뢰도: ${(result.confidence * 100).toFixed(1)}%`
+      : ''
+
+    alert(`${result.kr_name}\n${confidenceText}\n\n${result.description}`)
+    console.log('최종 화면 표시용 결과:', result)
   }
+
+  input.click()
+}
+
+const handleImageFile = async (file) => {
+  if (!file) return
+
+  console.log('이미지 선택됨:', file.name)
+
+  showCameraChoice.value = false      // 모달 닫기
+  analyzingPest.value = true          // 전체 로딩 ON
+  pestError.value = ''
+  pestResult.value = null
+
+  const result = await analyzePest(file)
+
+  pestResult.value = result
+  analyzingPest.value = false         // 로딩 OFF
+
+  const confidenceText = result.confidence != null
+    ? `신뢰도: ${(result.confidence * 100).toFixed(1)}%`
+    : ''
+
+  alert(`${result.kr_name}\n${confidenceText}\n\n${result.description}`)
+  console.log('최종 화면 표시용 결과:', result)
+}
+
+const takePhoto = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.capture = 'environment'   // 카메라로 바로 연결 (모바일에서)
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    await handleImageFile(file)
+  }
+
+  input.click()
+}
+
+const pickFromGallery = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'        // 캡쳐 X → 갤러리 우선
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    await handleImageFile(file)
+  }
+
   input.click()
 }
 
@@ -652,6 +893,62 @@ const formatLastUpdated = (timestamp) => {
   font-weight: 500;
 }
 
+.camera-choice-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 999;
+  display: flex;
+  align-items: flex-end; /* 바텀 시트 느낌 */
+  justify-content: center;
+}
+
+.camera-choice-sheet {
+  width: 100%;
+  max-width: 480px;
+  background: #ffffff;
+  border-radius: 16px 16px 0 0;
+  padding: 16px 20px 24px;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.camera-choice-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
+.camera-choice-btn {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: none;
+  background: #eef2e6;
+  color: #2c3e50;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.camera-choice-btn:active {
+  background: #dfe7d6;
+}
+
+.camera-choice-cancel {
+  width: 100%;
+  padding: 10px;
+  margin-top: 4px;
+  border-radius: 10px;
+  border: none;
+  background: #ffffff;
+  color: #7f8c8d;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* 식물 카드 스크롤 */
 .plant-scroll {
   display: flex;
@@ -921,5 +1218,54 @@ const formatLastUpdated = (timestamp) => {
   font-size: 48px;
   display: block;
   margin-bottom: 12px;
+}
+
+.analyzing-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 1000; /* 헤더, 메뉴보다 위 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.analyzing-box {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 24px 20px;
+  width: 80%;
+  max-width: 320px;
+  text-align: center;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.spinner {
+  width: 36px;
+  height: 36px;
+  margin: 0 auto 12px;
+  border-radius: 50%;
+  border: 3px solid #cbd5c0;
+  border-top-color: #4a6444;
+  animation: spin 0.8s linear infinite;
+}
+
+.analyzing-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin-bottom: 6px;
+}
+
+.analyzing-desc {
+  font-size: 12px;
+  color: #7f8c8d;
+  line-height: 1.4;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

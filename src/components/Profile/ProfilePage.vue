@@ -418,7 +418,7 @@ const startChat = () => {
 }
 
 const editProfile = () => {
-  router.push('/profile/edit')
+  router.push({ name: 'ProfileEdit' })
 }
 
 const goToSell = () => {
@@ -479,10 +479,11 @@ const showSales = () => {
   // 판매 완료 목록 보기
   console.log('판매 완료 목록')
 }
-const showFollowers = () => {
+
+/* const showFollowers = () => {
   // 팔로워 목록 보기
   console.log('팔로워 목록')
-}
+} */
 
 onMounted(() => {
   // 프로필 데이터 로드

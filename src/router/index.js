@@ -1,6 +1,6 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
-import Login from '@/components/Login.vue'
+import LoginPage from '@/components/LoginPage.vue'
 import { supabase } from '@/utils/supabase'
 import SignupView from '@/components/Signup/SignupView.vue'
 import SignupStep1 from '@/components/Signup/SignupStep1.vue'
@@ -8,7 +8,7 @@ import SignupStep2 from '@/components/Signup/SignupStep2.vue'
 import SignupStep3 from '@/components/Signup/SignupStep3.vue'
 import SignupComplete from '@/components/Signup/SignupComplete.vue'
 import MainLayout from '@/components/MainLayout.vue'
-import Home from '@/components/Home/Home.vue'
+import HomePage from '@/components/Home/HomePage.vue'
 import PlantDetail from '@/components/Home/PlantDetail.vue'
 import AddPlant from '@/components/Home/AddPlant.vue'
 import Notification from '@/components/Home/Notification.vue'
@@ -16,7 +16,8 @@ import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
 import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
 import WritePost from '@/components/Community/WritePost.vue'
-import Profile from '@/components/Profile/ProfileView.vue'
+import ProfilePage from '@/components/Profile/ProfilePage.vue'
+import ProfileEdit from '@/components/Profile/ProfileEdit.vue';
 import LoginSuccess from '@/components/LoginSuccess.vue'
 
 
@@ -27,8 +28,8 @@ const routes = [
     children: [
       { 
         path: '', 
-        name: 'Home',
-        component: Home,
+        name: 'HomePage',
+        component: HomePage,
         meta: { showBottomNav: true }
       },
       { 
@@ -73,17 +74,22 @@ const routes = [
       },
       { 
         path: 'profile', 
-        name: 'Profile',
-        component: Profile,
+        name: 'ProfilePage',
+        component: ProfilePage,
         // 로그인이 필요한 페이지라면
         // meta: { requiresAuth: true }
+      },
+      {
+        path: '/profile/edit',
+        name: 'ProfileEdit',
+        component: ProfileEdit
       }
     ]
   },
   {
     path: '/login',
-    name: 'Login',
-    component: Login
+    name: 'LoginPage',
+    component: LoginPage
   },
   {
     path: '/login-success',

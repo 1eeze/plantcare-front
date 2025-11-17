@@ -41,12 +41,12 @@ export default {
         alt: '홈',
         label: '홈'
       },
-      {
+      /* {
         path: '/unkown',
         icon: '/src/assets/icons/plant.png',
         alt: '식물',
         label: '식물'
-      },
+      }, */
       {
         path: '/marketprice',
         icon: '/src/assets/icons/uptrend.png',
