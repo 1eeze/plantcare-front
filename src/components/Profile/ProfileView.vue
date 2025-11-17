@@ -1,6 +1,5 @@
 <template>
   <div class="profile-container">
-    <!-- 프로필 헤더 -->
     <div class="profile-header">
       <div class="profile-image-wrapper">
         <img class="profile-img" :src="profileImage" alt="프로필 이미지" />
@@ -17,18 +16,16 @@
           accept="image/*"
           hidden 
         />
-        <!-- 인증 배지 -->
         <div v-if="userProfile.verified" class="verified-badge" title="인증된 사용자">
           ✓
         </div>
       </div>
 
       <div class="profile-info">
-        <h1 class="username">{{ userProfile.username }}</h1>
+        <h1 class="username">{{ nickname }}</h1> 
         <p class="user-level">{{ userProfile.level }} 🌱</p>
         <p class="bio" v-if="userProfile.bio">{{ userProfile.bio }}</p>
         
-        <!-- 위치 정보 -->
         <div class="location-info" v-if="userProfile.location">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
             <path d="M21 10C21 17 12 23 12 23C12 23 3 17 3 10C3 7.61305 3.94821 5.32387 5.63604 3.63604C7.32387 1.94821 9.61305 1 12 1C14.3869 1 16.6761 1.94821 18.3639 3.63604C20.0518 5.32387 21 7.61305 21 10Z" stroke="currentColor" stroke-width="1.5"/>
@@ -37,7 +34,6 @@
           {{ userProfile.location }}
         </div>
 
-        <!-- 평점 -->
         <div class="rating-section" v-if="userProfile.rating">
           <div class="stars">
             <span v-for="n in 5" :key="n" class="star" :class="{ filled: n <= Math.floor(userProfile.rating) }">
@@ -48,7 +44,6 @@
         </div>
       </div>
 
-      <!-- 액션 버튼들 -->
       <div class="action-buttons">
         <button v-if="!isOwnProfile" @click="startChat" class="chat-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -60,9 +55,9 @@
         <button v-if="!isOwnProfile" @click="toggleFollow" class="follow-btn" :class="{ following: isFollowing }">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path v-if="!isFollowing" d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path v-if="!isFollowing" d="M8.5 11C10.7091 11 12.5 9.20914 12.5 7C12.5 4.79086 10.7091 3 8.5 3C6.29086 3 4.5 4.79086 4.5 7C4.5 9.20914 6.29086 11 8.5 11Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path v-if="!isFollowing" d="M8.5 11C10.7091 11 12.5 9.20914 12.5 7C12.5 4.79086 10.7091 3 8.5 3C6.29086 3 4.5 4.79086 4.5 7C4.5 9.20914 6.29086 11 8.5 11Z" stroke="currentColor" stroke-width="1.IS" stroke-linecap="round" stroke-linejoin="round"/>
             <path v-if="!isFollowing" d="M20 8V14M17 11H23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path v-else d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="1.5"/>
+            <path v-else d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="1.S"/>
             <circle cx="8.5" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/>
             <path d="M20 8L22 10L17 15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
@@ -71,15 +66,14 @@
 
         <button v-if="isOwnProfile" @click="editProfile" class="edit-btn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path d="M18.5 2.50023C18.8978 2.1024 19.4374 1.87891 20 1.87891C20.5626 1.87891 21.1022 2.1024 21.5 2.50023C21.8978 2.89805 22.1213 3.43762 22.1213 4.00023C22.1213 4.56284 21.8978 5.1024 21.5 5.50023L12 15.0002L8 16.0002L9 12.0002L18.5 2.50023Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M11 4H4C3.46957 4 2.96086 4.21071 2.58579 4.58579C2.21071 4.96086 2 5.46957 2 6V20C2 20.5304 2.21071 21.0391 2.58579 21.4142C2.96086 21.7893 3.46957 22 4 22H18C18.5304 22 19.0391 21.7893 19.4142 21.4142C19.7893 21.0391 20 20.5304 20 20V13" stroke="currentColor" stroke-width="1.S" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M18.5 2.50023C18.8978 2.1024 19.4374 1.87891 20 1.87891C20.5626 1.87891 21.1022 2.1024 21.5 2.50023C21.8978 2.89805 22.1213 3.43762 22.1213 4.00023C22.1213 4.56284 21.8978 5.1024 21.5 5.50023L12 15.0002L8 16.0002L9 12.0002L18.5 2.50023Z" stroke="currentColor" stroke-width="1.S" stroke-linecap="round" stroke-linejoin="round"/>
           </svg>
           프로필 수정
         </button>
       </div>
     </div>
 
-    <!-- 통계 박스 -->
     <div class="stats-section">
       <div class="stats-box">
         <div class="stat-item" @click="showPlants">
@@ -96,7 +90,6 @@
         </div>
       </div>
 
-      <!-- 거래 신뢰도 -->
       <div class="trust-score">
         <div class="trust-header">
           <h3>거래 신뢰도</h3>
@@ -113,7 +106,6 @@
       </div>
     </div>
 
-    <!-- 탭 네비게이션 -->
     <div class="tab-navigation">
       <button 
         v-for="tab in tabs" 
@@ -129,9 +121,7 @@
       </button>
     </div>
 
-    <!-- 컨텐츠 영역 -->
     <div class="content-area">
-      <!-- 판매 중인 식물 -->
       <div v-if="activeTab === 'selling'" class="grid-content">
         <div v-if="sellingPosts.length === 0" class="empty-state">
           <div class="empty-icon">🌱</div>
@@ -164,7 +154,6 @@
         </div>
       </div>
 
-      <!-- 내 식물들 -->
       <div v-if="activeTab === 'plants'" class="grid-content">
         <div v-if="myPlants.length === 0" class="empty-state">
           <div class="empty-icon">🪴</div>
@@ -197,7 +186,6 @@
         </div>
       </div>
 
-      <!-- 거래 후기 -->
       <div v-if="activeTab === 'reviews'" class="reviews-content">
         <div v-if="reviews.length === 0" class="empty-state">
           <div class="empty-icon">⭐</div>
@@ -230,7 +218,6 @@
         </div>
       </div>
 
-      <!-- 갤러리 -->
       <div v-if="activeTab === 'photos'" class="grid-content">
         <div v-if="photos.length === 0" class="empty-state">
           <div class="empty-icon">📸</div>
@@ -256,32 +243,37 @@
         </div>
       </div>
     </div>
+
+    <button @click="handleLogout" class="logout-button">로그아웃</button>
+    <button @click="handleWithdraw" class="withdraw-button">회원 탈퇴</button>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+// (우리의 로직 적용) supabase import 추가
+import { supabase } from '@/utils/supabase.js'
 import profileImageUrl from '../../assets/user-profile.png'
 import plantImg1 from '../../assets/plant.png'
 
 const router = useRouter()
 const route = useRoute()
 
-// 반응성 데이터
+// 반응성 데이터 (팀원 + 우리)
 const profileImage = ref(profileImageUrl)
+const nickname = ref('사용자 이름') // (우리의 로직 적용) 닉네임 ref
 const activeTab = ref('selling')
 const isFollowing = ref(false)
 
-// 현재 프로필이 본인 것인지 확인
+// 현재 프로필이 본인 것인지 확인 (팀원)
 const isOwnProfile = computed(() => {
-  // 실제로는 라우트 파라미터와 현재 사용자 ID를 비교
   return !route.params.userId || route.params.userId === 'me'
 })
 
-// 사용자 프로필 데이터
+// 사용자 프로필 데이터 (팀원)
 const userProfile = ref({
-  username: '식물마니아',
+  username: '식물마니아', // (우리의 onMounted가 이 값을 덮어쓸 예정)
   level: '그린 마스터',
   bio: '건강한 식물들을 키우고 나누는 것을 좋아합니다. 식물 상담 언제든 환영해요! 🌿',
   location: '서울시 강남구',
@@ -296,7 +288,7 @@ const userProfile = ref({
   ]
 })
 
-// 사용자 통계
+// 사용자 통계 (팀원)
 const userStats = ref({
   plantsCount: 23,
   postsCount: 45,
@@ -304,7 +296,7 @@ const userStats = ref({
   followersCount: 156
 })
 
-// 탭 설정
+// 탭 설정 (팀원)
 const tabs = [
   { 
     key: 'selling', 
@@ -328,7 +320,7 @@ const tabs = [
   }
 ]
 
-// 더미 데이터들
+// 더미 데이터들 (팀원)
 const sellingPosts = ref([
   {
     id: 1,
@@ -349,7 +341,6 @@ const sellingPosts = ref([
     views: 203
   }
 ])
-
 const myPlants = ref([
   {
     id: 1,
@@ -368,7 +359,6 @@ const myPlants = ref([
     daysOwned: 89
   }
 ])
-
 const reviews = ref([
   {
     id: 1,
@@ -383,7 +373,6 @@ const reviews = ref([
     }
   }
 ])
-
 const photos = ref([
   {
     id: 1,
@@ -394,26 +383,58 @@ const photos = ref([
   }
 ])
 
-// 메서드들
+// (우리의 로직 적용) onMounted 수정
+onMounted(async () => {
+  console.log('프로필 로드됨 (팀원 로그)')
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return 
+
+    const { data, error } = await supabase
+      .from('Users')
+      .select('name, avatar_url')
+      .eq('id', user.id)
+      .single()
+
+    // '행 없음' (PGRST116) 이외의 에러만 throw
+    if (error && error.code !== 'PGRST116') throw error 
+    
+    if (data) {
+      if (data.name) {
+        // (우리의 로직) 팀원의 더미 닉네임 대신 실제 닉네임 삽입
+        nickname.value = data.name 
+        userProfile.value.username = data.name // (추가) 팀원 UI에도 반영
+      }
+      if (data.avatar_url) {
+        // (우리의 로직) 팀원의 더미 프로필 대신 실제 프로필 사진 삽입
+        profileImage.value = data.avatar_url
+      }
+    }
+
+  } catch (error) {
+    console.error('프로필 정보 로드 에러:', error.message)
+  }
+})
+
+// 메서드들 (팀원)
 const changeProfileImage = (e) => {
   const file = e.target.files[0]
   if (file) {
-    // 파일 크기 체크
     if (file.size > 5 * 1024 * 1024) {
       alert('파일 크기는 5MB 이하로 선택해주세요.')
       return
     }
     profileImage.value = URL.createObjectURL(file)
+    // (보충) TODO: 여기서 Supabase Storage에 업로드하는 로직 추가 필요
   }
 }
 
 const toggleFollow = () => {
   isFollowing.value = !isFollowing.value
-  // 실제로는 API 호출
+  console.log('팔로우 토글')
 }
 
 const startChat = () => {
-  // 채팅 기능 구현
   console.log('채팅 시작')
 }
 
@@ -472,29 +493,55 @@ const getHealthIcon = (health) => {
   return healthMap[health] || '✅'
 }
 
-// 통계 클릭 이벤트들
 const showPlants = () => activeTab.value = 'plants'
-const showPosts = () => activeTab.value = 'selling'  
+const showPosts = () => activeTab.value = 'selling' 
 const showSales = () => {
-  // 판매 완료 목록 보기
   console.log('판매 완료 목록')
 }
 const showFollowers = () => {
-  // 팔로워 목록 보기
   console.log('팔로워 목록')
 }
 
-onMounted(() => {
-  // 프로필 데이터 로드
-  console.log('프로필 로드됨')
-})
+// (우리의 로직 적용) 로그아웃 / 탈퇴 함수 추가
+const handleLogout = async () => {
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+    router.push('/login')
+  } catch (error) {
+    alert('로그아웃 중 오류가 발생했습니다: ' + error.message)
+  }
+}
+
+const handleWithdraw = async () => {
+  const confirm = window.prompt("정말로 탈퇴하시려면 '회원탈퇴'라고 입력해주세요.")
+  if (confirm !== '회원탈퇴') {
+    alert('입력이 일치하지 않아 취소되었습니다.')
+    return
+  }
+
+  try {
+    const { data, error } = await supabase.functions.invoke('withdraw-user')
+    if (error) throw error
+    
+    alert('회원 탈퇴가 완료되었습니다.')
+    await supabase.auth.signOut()
+    router.push('/login')
+
+  } catch (error) {
+    alert('회원 탈퇴 중 오류가 발생했습니다: ' + error.message)
+  }
+}
 </script>
 
 <style scoped>
+/* (팀원의 스타일) */
 .profile-container {
   background: linear-gradient(135deg, #f7f6ed 0%, #eef2e6 100%);
   min-height: 100vh;
   padding-bottom: 100px;
+  /* (우리의 수정) box-sizing 추가 */
+  box-sizing: border-box; 
 }
 
 .profile-header {
@@ -1243,5 +1290,38 @@ onMounted(() => {
     padding: 10px 16px;
     font-size: 13px;
   }
+}
+
+/* (우리의 로직 적용) 로그아웃/탈퇴 버튼 스타일 */
+.logout-button {
+  margin: 30px auto 10px;
+  padding: 10px 20px;
+  font-size: 14px;
+  color: #fff;
+  background-color: #e74c3c;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  display: block; 
+  width: 200px;
+}
+
+.withdraw-button {
+  margin: 10px auto;
+  padding: 10px 20px;
+  font-size: 14px;
+  color: #999;
+  background-color: transparent;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  cursor: pointer;
+  display: block;
+  width: 200px;
+}
+
+.withdraw-button:hover {
+  background-color: #f5f5f5;
+  color: #e74c3c;
+  border-color: #e74c3c;
 }
 </style>

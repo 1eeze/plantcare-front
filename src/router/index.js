@@ -1,7 +1,8 @@
 // src/router/index.js
 import { createRouter, createWebHistory } from 'vue-router'
-import Login from '@/components/Login.vue'
-import { supabase } from '@/utils/supabase'
+// (팀원 코드) Login.vue가 아닌 @/components/Login.vue 사용
+import Login from '@/components/Login.vue' 
+import { supabase } from '@/utils/supabase' // (우리 코드) supabase import
 import SignupView from '@/components/Signup/SignupView.vue'
 import SignupStep1 from '@/components/Signup/SignupStep1.vue'
 import SignupStep2 from '@/components/Signup/SignupStep2.vue'
@@ -17,8 +18,8 @@ import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
 import WritePost from '@/components/Community/WritePost.vue'
 import Profile from '@/components/Profile/ProfileView.vue'
+// (팀원 코드) LoginSuccess import 추가
 import LoginSuccess from '@/components/LoginSuccess.vue'
-
 
 const routes = [
   {
@@ -68,15 +69,15 @@ const routes = [
         path: 'write', 
         name: 'WritePost',
         component: WritePost,
-        // 로그인이 필요한 페이지라면
-        // meta: { requiresAuth: true }
+        // (팀원 코드) meta: { requiresAuth: true }로 변경
+        meta: { requiresAuth: true }
       },
       { 
         path: 'profile', 
         name: 'Profile',
         component: Profile,
-        // 로그인이 필요한 페이지라면
-        // meta: { requiresAuth: true }
+        // (팀원 코드) meta: { requiresAuth: true }로 변경
+        meta: { requiresAuth: true }
       }
     ]
   },
@@ -86,6 +87,7 @@ const routes = [
     component: Login
   },
   {
+    // (팀원 코드) LoginSuccess 라우트 추가
     path: '/login-success',
     name: 'LoginSuccess',
     component: LoginSuccess
@@ -134,35 +136,47 @@ const router = createRouter({
   routes
 })
 
-/**
- * 전역 네비게이션 가드
- * - requiresAuth 라우트: 세션 확인
- * - DEV: dev@example.com 자동 로그인 1회 시도
- * - 실패 시 /login 으로 리다이렉트 (원래 목적지는 redirect 쿼리로 보존)
- */
-router.beforeEach(async (to) => {
-  const needsAuth = to.matched.some(r => r.meta?.requiresAuth)
-  if (!needsAuth) return true
-
-  // 현재 세션 확인
-  const { data: { session } } = await supabase.auth.getSession()
-  if (session) return true
-
-  // DEV 환경이면 자동 로그인 시도
-  if (import.meta.env.DEV) {
-    const { error } = await supabase.auth.signInWithPassword({
-      email: 'dev@example.com',
-      password: 'dev123456'
-    })
-    if (!error) {
-      const { data: { session: s2 } } = await supabase.auth.getSession()
-      if (s2) return true
-    }
+// (우리 코드) 네비게이션 가드 사용
+// (팀원의 DEV 자동 로그인 로직 대신, 우리의 '문지기' 로직을 최종본으로 선택)
+router.beforeEach(async (to, from, next) => {
+  // 1. 로그인/회원가입/로그인 성공 페이지는 누구나 접근 가능
+  const publicPaths = ['/login', '/signup', '/login-success']
+  if (publicPaths.includes(to.path) || to.path.startsWith('/signup')) {
+    next() // 통과
+    return
   }
 
-  // 세션 없음 → 로그인 페이지로
-  alert('로그인이 필요합니다.')
-  return { name: 'Login', query: { redirect: to.fullPath } }
+  // 2. 그 외 모든 페이지는 로그인이 필요함
+  const { data: { session } } = await supabase.auth.getSession()
+
+  if (!session) {
+    // 세션이 없으면 로그인 페이지로 보냄
+    next('/login')
+  } else {
+    // 3. 세션이 있으면 프로필 정보를 확인
+    const { data: profile, error } = await supabase
+      .from('Users')
+      .select('name')
+      .eq('id', session.user.id)
+      .single()
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('프로필 조회 에러 (라우트 가드):', error)
+      next() // 에러 발생 시 일단 통과
+      return
+    }
+
+    // 4. 닉네임이 없고 (profile이 없거나 name이 null)
+    //    현재 가는 경로가 회원가입 페이지가 아니라면
+    if ((!profile || !profile.name) && !to.path.startsWith('/signup')) {
+      // 닉네임 입력 페이지(2단계)로 강제 이동
+      alert('추가 정보(닉네임) 입력이 필요합니다.')
+      next('/signup/step2')
+    } else {
+      // 닉네임이 있거나, 이미 회원가입 페이지로 가고 있다면 통과
+      next() 
+    }
+  }
 })
 
 export default router

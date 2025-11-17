@@ -25,35 +25,62 @@
     </div>
   </template>
   
-  <script setup>
-  import { ref } from 'vue'
-  const emit = defineEmits(['next'])
-  
-  const email = ref('')
-  const password = ref('')
-  const agreeAll = ref(false)
-  const ageConfirm = ref(false)
-  const termsAgree = ref(false)
-  const privacyAgree = ref(false)
-  const newsletter = ref(false)
-  
-  const toggleAll = () => {
-    const check = agreeAll.value
-    ageConfirm.value = check
-    termsAgree.value = check
-    privacyAgree.value = check
-    newsletter.value = check
+<script setup>
+import { supabase } from '@/utils/supabase.js'
+import { ref } from 'vue'
+const emit = defineEmits(['next'])
+
+const email = ref('')
+const password = ref('')
+const agreeAll = ref(false)
+const ageConfirm = ref(false)
+const termsAgree = ref(false)
+const privacyAgree = ref(false)
+const newsletter = ref(false)
+
+const toggleAll = () => {
+  const check = agreeAll.value
+  ageConfirm.value = check
+  termsAgree.value = check
+  privacyAgree.value = check
+  newsletter.value = check
+}
+
+const submitSignup = async () => {
+  if (!ageConfirm.value || !termsAgree.value || !privacyAgree.value) {
+    alert('필수 항목을 모두 체크해주세요.')
+    return
   }
-  
-  const submitSignup = () => {
-    if (!ageConfirm.value || !termsAgree.value || !privacyAgree.value) {
-      alert('필수 항목을 모두 체크해주세요.')
-      return
+
+  try {
+    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+      email: email.value,
+      password: password.value,
+    })
+
+    if (signUpError) {
+      console.error('회원가입 에러:', signUpError.message)
+      alert('회원가입 중 오류가 발생했습니다: ' + signUpError.message)
+    } else {
+      console.log('회원가입 성공:', signUpData)
+      
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.value,
+        password: password.value,
+      })
+
+      if (signInError) {
+        alert('회원가입은 성공했으나 로그인에 실패했습니다: ' + signInError.message)
+      } else {
+        emit('next')
+      }
     }
-    console.log('회원가입 정보:', { email: email.value, password: password.value })
-    emit('next')
+  } catch (error) {
+    console.error('알 수 없는 에러:', error)
+    alert('알 수 없는 오류가 발생했습니다.')
   }
-  </script>
+}
+</script>
   
   <style scoped>
   .signup-background {

@@ -13,7 +13,7 @@
               </svg>
             </div>
           </div>
-          <input type="file" id="profileImage" accept="image/*" @change="onImageChange" hidden />
+          <input type="file" id="plantImage" accept="image/*" @change="onImageChange" hidden />
         </label>
       </div>
     
@@ -34,7 +34,7 @@
       <!-- 하단 버튼 영역 -->
       <div class="bottom-button-row">
         <button class="prev-button" @click="goBack">이전</button>
-        <button class="next-button" :disabled="!nickname" @click="goNext">완료</button>
+        <button class="next-button" :disabled="!PlantNickname" @click="goNext">완료</button>
       </div>
 
       <!-- 건너뛰기 버튼 -->
@@ -43,33 +43,84 @@
   </template>
    
    
-  <script setup>
-  import { ref } from 'vue'
-  const emit = defineEmits(['next', 'prev'])
-    
-  const PlantNickname = ref('')
-  const imageFile = ref(null)
-  const imageUrl = ref(null)
-    
-  const onImageChange = (event) => {
-      const file = event.target.files[0]
-      if (file) {
-        imageFile.value = file
-        imageUrl.value = URL.createObjectURL(file)
-      }
-  }
+<script setup>
+import { ref } from 'vue' // defineEmits는 자동인식되므로 import에서 제거
+import { supabase } from '@/utils/supabase.js'
+const emit = defineEmits(['next', 'prev'])
   
-  const goBack = () => {
-    emit('prev') // 상위 컴포넌트에서 이전 단계로 이동
-  }
-  const goNext = () => {
-    emit('next')  // 추후 formData 형태로 DB 서버에 POST 요청 전송 추가
-  }
+const PlantNickname = ref('')
+const imageFile = ref(null)
+const imageUrl = ref(null)
+  
+const onImageChange = (event) => {
+    const file = event.target.files[0]
+    if (file) {
+      imageFile.value = file
+      imageUrl.value = URL.createObjectURL(file)
+    }
+}
 
-  const skipStep = () => {
-  emit('next')  // 또는 emit('skip') 등 필요에 따라
+const goBack = () => {
+  emit('prev')
+}
+
+// goNext 함수를 이 코드로 통째로 교체합니다.
+const goNext = async () => {
+  // :disabled="!PlantNickname"이 이미 닉네임을 검사하므로, 여기선 사용자만 확인
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) throw new Error('사용자 정보를 찾을 수 없습니다.')
+
+    let photoData = null // 1. 사진 데이터는 null로 시작
+
+    // 2. (★★핵심 수정★★)
+    //    이미지 파일이 '있을 경우에만' 업로드를 시도
+    if (imageFile.value) { 
+      const file = imageFile.value
+      const fileExt = file.name.split('.').pop()
+      const filePath = `${user.id}/${Date.now()}.${fileExt}`
+      
+      // 1-A에서 권한을 설정한 'plants' 버킷에 업로드
+      const { error: uploadError } = await supabase.storage
+        .from('plants') 
+        .upload(filePath, file)
+
+      if (uploadError) throw uploadError
+
+      // 3. 업로드 성공 시 공개 URL 가져오기
+      const { data: urlData } = supabase.storage
+        .from('plants')
+        .getPublicUrl(filePath)
+        
+      if (!urlData) throw new Error('이미지 URL을 가져오지 못했습니다.')
+      photoData = { url: urlData.publicUrl } // JSONB 형식으로 저장
+    }
+
+    // 4. User_Plants 테이블에 데이터 저장
+    // (사진 데이터는 있거나(photoData), 혹은 null)
+    const { error: insertError } = await supabase
+      .from('User_Plants') // (스키마에 정의된 "User_Plants")
+      .insert({
+        name: PlantNickname.value, // 별명
+        photos: photoData,          // 사진 (jsonb)
+        user_id: user.id
+      })
+
+    if (insertError) throw insertError
+
+    emit('next') // 성공 시 다음 단계로 (SignupComplete)
+
+  } catch (error) {
+    console.error('식물 등록 에러:', error.message)
+    alert('식물 등록 중 오류가 발생했습니다: ' + error.message)
   }
-  </script>
+}
+
+// 건너뛰기 버튼은 사진/별명 모두 저장하지 않고 그냥 넘어감
+const skipStep = () => {
+  emit('next')
+}
+</script>
    
   
   <style>

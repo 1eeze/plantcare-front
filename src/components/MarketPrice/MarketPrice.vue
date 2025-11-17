@@ -248,7 +248,6 @@ export default {
 .market-container {
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
   background-color: #fafafa;
 }
 

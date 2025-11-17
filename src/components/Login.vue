@@ -82,6 +82,7 @@
   </template>
   
   <script setup>
+  import { supabase } from '@/utils/supabase.js'
   import { ref } from 'vue'
   import { useRouter } from 'vue-router'
 
@@ -91,6 +92,7 @@
   const secureLogin = ref(false)
   const router = useRouter()
 
+<<<<<<< Updated upstream:src/components/Login.vue
   const handleNaverLogin = () => {
   window.location.href = 'https://pkplantcare.shop/auth/login/naver'
 }
@@ -142,8 +144,58 @@ const handleGoogleLogin = () => {
       router.push('/community') // 테스트 페이지로 이동
     } else {
       alert('아이디 또는 비밀번호가 올바르지 않습니다.')
+=======
+const handleNaverLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'naver',
+    options: {
+      redirectTo: window.location.origin // <-- 이 줄 추가
+>>>>>>> Stashed changes:src/components/LoginForm.vue
     }
+  })
+}
+
+const handleKakaoLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'kakao',
+    options: {
+      redirectTo: window.location.origin // <-- 이 줄 추가
+    }
+  })
+}
+
+const handleGoogleLogin = async () => {
+  await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin // <-- 이 줄 추가
+    }
+  })
+}
+  
+const handleLogin = async () => {
+  try {
+    // Supabase에 이메일과 비밀번호로 로그인 요청
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: userId.value, // userId는 이메일을 입력받는 변수입니다.
+      password: userPassword.value,
+    })
+
+    if (error) {
+      // 로그인 실패 시 사용자에게 알림
+      console.error('로그인 에러:', error.message)
+      alert('아이디 또는 비밀번호가 올바르지 않습니다.')
+    } else {
+      // 로그인 성공 시
+      console.log('로그인 성공:', data)
+      // 요청하신 대로 커뮤니티 페이지로 이동
+      router.push('/community')
+    }
+  } catch (error) {
+    console.error('알 수 없는 에러:', error)
+    alert('로그인 중 알 수 없는 오류가 발생했습니다.')
   }
+}
   
   const goToSignup = () => {
   router.push('/signup')
