@@ -1,11 +1,40 @@
 <template>
   <div id="app">
-    <router-view />
-    </div>
+    <SplashScreen v-if="initialLoading" />
+
+    <router-view v-else />
+  </div>
 </template>
 
-<script>
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
+import SplashScreen from '@/components/common/SplashScreen.vue'
 
+const initialLoading = ref(true)
+const router = useRouter()
+
+onMounted(async () => {
+  // 앱 켜지자마자 세션 확인
+  const { data: { session } } = await supabase.auth.getSession()
+  const isLoggedIn = !!session
+
+  if (!isLoggedIn) {
+    // 로그인 안 되어있으면 로그인 화면으로
+    router.replace({ name: 'LoginPage' })
+  } else {
+    // 로그인 되어있으면 홈 화면으로 (혹은 마지막 페이지 유지)
+    if (router.currentRoute.value.name === 'LoginPage') {
+      router.replace({ name: 'HomePage' }) 
+    }
+  }
+
+  // 스플래시를 잠깐 더 보여주고 싶으면 setTimeout으로 살짝 딜레이도 가능
+  setTimeout(() => {
+    initialLoading.value = false
+  }, 800) // 0.8초 정도
+})
 </script>
 
 <style>
@@ -15,7 +44,9 @@
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
   color: #2c3e50;
-  /* margin-top: 60px; */
+  /* 스플래시를 화면 꽉 채우기 위해 margin-top: 0 적용 */
+  margin-top: 0;
+  min-height: 100vh;
 }
 
 body, html, #app {
@@ -24,7 +55,12 @@ body, html, #app {
   box-sizing: border-box;
 }
 
-/* 업로드 모달 */
+body {
+  background: linear-gradient(135deg, #e8f9ef, #f7fff9);
+  min-height: 100vh;
+}
+
+/* 업로드 모달 스타일 */
 .upload-modal {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;

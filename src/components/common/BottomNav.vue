@@ -20,7 +20,10 @@
 
 <script>
 import { useRouter, useRoute } from 'vue-router'
-import { computed } from 'vue'
+import homeIcon from '@/assets/icons/home.png'
+import uptrendIcon from '@/assets/icons/uptrend.png'
+import communityIcon from '@/assets/icons/community.png'
+import profileIcon from '@/assets/icons/profile.png'
 
 export default {
   name: 'BottomNav',
@@ -37,31 +40,31 @@ export default {
     const navItems = [
       {
         path: '/',
-        icon: '/src/assets/icons/home.png',
+        icon: homeIcon,
         alt: '홈',
         label: '홈'
       },
-      {
+      /* {
         path: '/unkown',
         icon: '/src/assets/icons/plant.png',
         alt: '식물',
         label: '식물'
-      },
+      }, */
       {
         path: '/marketprice',
-        icon: '/src/assets/icons/uptrend.png',
+        icon: uptrendIcon,
         alt: '시세',
         label: '시세'
       },
       {
         path: '/community',
-        icon: '/src/assets/icons/community.png',
+        icon: communityIcon,
         alt: '커뮤니티',
         label: '커뮤니티'
       },
       {
         path: '/profile',
-        icon: '/src/assets/icons/profile.png',
+        icon: profileIcon,
         alt: '프로필',
         label: '프로필'
       }

@@ -1,9 +1,6 @@
 <template>
     <div class="login-container">
-      <h2 class="logo">
-        <span class="green">P</span>lant<br />
-        <span class="green">C</span>are
-      </h2>
+      <img src="@/assets/logo.png" alt="PlantCare 로고" class="logo-img" />
   
       <div class="input-group">
         <input type="text" placeholder="아이디를 입력해주세요" v-model="userId" />
@@ -145,7 +142,7 @@
   
 <style scoped>
 
-  .login-container {
+.login-container {
   max-width: 400px;
   width: 90%;
   margin: 40px auto;
@@ -156,18 +153,13 @@
   font-family: sans-serif;
 }
 
-h2 {
-  text-align: center;
-  margin-bottom: 20px;
-}
-
-.logo {
-  font-family: 'Fredoka', sans-serif;
-  font-weight: 600;
-  font-size: 3rem;
-  line-height: 1.2;
-  color: #4C2B08;
-  text-align: center;
+.logo-img {
+  width: 45vw;        /* 화면의 45% → 모바일에서 적당히 보임 */
+  max-width: 180px;   /* 태블릿·PC에서는 너무 커지지 않도록 제한 */
+  min-width: 120px;   /* 작은 폰에서도 너무 작아지지 않게 */
+  height: auto;
+  display: block;
+  margin: 0 auto 20px;
 }
 
 .logo .green {

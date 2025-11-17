@@ -55,7 +55,7 @@
         <button v-if="!isOwnProfile" @click="toggleFollow" class="follow-btn" :class="{ following: isFollowing }">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path v-if="!isFollowing" d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            <path v-if="!isFollowing" d="M8.5 11C10.7091 11 12.5 9.20914 12.5 7C12.5 4.79086 10.7091 3 8.5 3C6.29086 3 4.5 4.79086 4.5 7C4.5 9.20914 6.29086 11 8.5 11Z" stroke="currentColor" stroke-width="1.IS" stroke-linecap="round" stroke-linejoin="round"/>
+            <path v-if="!isFollowing" d="M8.5 11C10.7091 11 12.5 9.20914 12.5 7C12.5 4.79086 10.7091 3 8.5 3C6.29086 3 4.5 4.79086 4.5 7C4.5 9.20914 6.29086 11 8.5 11Z" stroke="currentColor" stroke-width="1.S" stroke-linecap="round" stroke-linejoin="round"/>
             <path v-if="!isFollowing" d="M20 8V14M17 11H23" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             <path v-else d="M16 21V19C16 17.9391 15.5786 16.9217 14.8284 16.1716C14.0783 15.4214 13.0609 15 12 15H5C3.93913 15 2.92172 15.4214 2.17157 16.1716C1.42143 16.9217 1 17.9391 1 19V21" stroke="currentColor" stroke-width="1.S"/>
             <circle cx="8.5" cy="7" r="4" stroke="currentColor" stroke-width="1.5"/>
@@ -439,7 +439,9 @@ const startChat = () => {
 }
 
 const editProfile = () => {
-  router.push('/profile/edit')
+  // (팀원 코드 수정) 'ProfileEdit' 이름의 라우트가 아직 없으므로 주석 처리
+  // router.push({ name: 'ProfileEdit' }) 
+  alert('프로필 수정 기능 준비중입니다.')
 }
 
 const goToSell = () => {
@@ -498,9 +500,12 @@ const showPosts = () => activeTab.value = 'selling'
 const showSales = () => {
   console.log('판매 완료 목록')
 }
+
+/* (팀원 코드 수정) 충돌나는 부분 주석 처리
 const showFollowers = () => {
   console.log('팔로워 목록')
-}
+} 
+*/
 
 // (우리의 로직 적용) 로그아웃 / 탈퇴 함수 추가
 const handleLogout = async () => {

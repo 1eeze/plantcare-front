@@ -1,0 +1,65 @@
+name: Debug Mirror to Personal Repo
+
+on:
+  push:
+    branches:
+      - main   # main 브랜치에 push 될 때만 실행
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ github.token }}
+      
+      - name: Configure Git
+        run: |
+          git config --global user.name "1eeze"
+          git config --global user.email "leezeze01@naver.com"
+      
+      - name: Debug - Check current state
+        run: |
+          echo "Current branch: $(git branch --show-current)"
+          echo "Remote repositories:"
+          git remote -v
+          echo "Recent commits:"
+          git log --oneline -5
+      
+      - name: Debug - Check token length
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          echo "Token length: ${#PERSONAL_TOKEN}"
+      
+      - name: Debug - Who am I
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          echo "Authenticating with GitHub API..."
+          curl -s -H "Authorization: token $PERSONAL_TOKEN" https://api.github.com/user | grep login
+      
+      - name: Debug - Show remote before push
+        run: git remote -v
+
+      - name: Prepare push with PAT
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          git config --unset-all http.https://github.com/.extraheader
+          git remote remove mirror 2>/dev/null || true
+          git remote add mirror https://x-access-token:${PERSONAL_TOKEN}@github.com/1eeze/plantcare-front.git
+          echo "Pushing to mirror repository..."
+          git push mirror HEAD:main --force --verbose
+
+      - name: Push to mirror repo
+        env:
+          PERSONAL_TOKEN: ${{ secrets.PERSONAL_TOKEN }}
+        run: |
+          git remote remove mirror 2>/dev/null || true
+          git remote add mirror https://x-access-token:${PERSONAL_TOKEN}@github.com/1eeze/plantcare-front.git
+          
+          echo "Pushing to mirror repository..."
+          git push mirror HEAD:main --force --verbose
