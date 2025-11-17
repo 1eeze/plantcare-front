@@ -69,20 +69,19 @@ const routes = [
         path: 'write', 
         name: 'WritePost',
         component: WritePost,
-        // 로그인이 필요한 페이지라면
-        // meta: { requiresAuth: true }
+        meta: { requiresAuth: true }
       },
       { 
         path: 'profile', 
         name: 'ProfilePage',
         component: ProfilePage,
-        // 로그인이 필요한 페이지라면
-        // meta: { requiresAuth: true }
+        meta: { requiresAuth: true }
       },
       {
-        path: '/profile/edit',
+        path: 'profile/edit',
         name: 'ProfileEdit',
-        component: ProfileEdit
+        component: ProfileEdit,
+        meta: { requiresAuth: true }
       }
     ]
   },
@@ -140,21 +139,27 @@ const router = createRouter({
   routes
 })
 
-/**
- * 전역 네비게이션 가드
- * - requiresAuth 라우트: 세션 확인
- * - DEV: dev@example.com 자동 로그인 1회 시도
- * - 실패 시 /login 으로 리다이렉트 (원래 목적지는 redirect 쿼리로 보존)
- */
 router.beforeEach(async (to) => {
-  const needsAuth = to.matched.some(r => r.meta?.requiresAuth)
-  if (!needsAuth) return true
-
-  // 현재 세션 확인
+  // 1) 현재 로그인 상태 먼저 확인
   const { data: { session } } = await supabase.auth.getSession()
-  if (session) return true
+  const isLoggedIn = !!session
 
-  // DEV 환경이면 자동 로그인 시도
+  // 2) 이미 로그인한 사용자가 /login 으로 가려 하면 → 홈으로 보내기
+  if (to.name === 'LoginPage' && isLoggedIn) {
+    return { name: 'HomePage' }
+  }
+
+  // 3) 이 라우트(또는 그 자식들) 중 하나라도 requiresAuth:true 가 있는지 검사
+  const needsAuth = to.matched.some(r => r.meta?.requiresAuth)
+  if (!needsAuth) {
+    // 로그인 필요 없는 페이지면 그냥 통과
+    return true
+  }
+
+  // 4) 로그인 필요한 페이지인데, 이미 로그인 되어 있으면 통과
+  if (isLoggedIn) return true
+
+  // 5) DEV 환경이면 자동 로그인 시도 (지금 있던 코드 유지)
   if (import.meta.env.DEV) {
     const { error } = await supabase.auth.signInWithPassword({
       email: 'dev@example.com',
@@ -166,9 +171,14 @@ router.beforeEach(async (to) => {
     }
   }
 
-  // 세션 없음 → 로그인 페이지로
+  // 6) 여기까지 왔다는 건:
+  //    - 로그인 필요 페이지 (needsAuth === true)
+  //    - 세션 없음
   alert('로그인이 필요합니다.')
-  return { name: 'Login', query: { redirect: to.fullPath } }
+  return { 
+    name: 'LoginPage',               // ✅ 이름 수정
+    query: { redirect: to.fullPath } // 로그인 후 다시 돌아올 경로
+  }
 })
 
 export default router
