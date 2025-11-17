@@ -32,7 +32,6 @@
         </div>
       <div class="sns-circle-group">
 
-        <!-- 네이버 로그인 버튼 -->
         <div class="sns-circle-button" @click="handleNaverLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -45,20 +44,18 @@
           <span>네이버</span>
         </div>
 
-        <!-- 카카오 로그인 버튼 -->
-        <div class="sns-circle-button" @click="handleKakaoLogin('kakao')">
+        <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
               <div class="gsi-material-button-icon">
-                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오" />
+                <img class="kakao-img" src="../assets/kakao-talk.png" alt="카카오오" />
               </div>
             </div>
           </button>
           <span>카카오</span>
         </div>
 
-        <!-- 구글 로그인 -->
         <div class="sns-circle-button" @click="handleGoogleLogin('google')">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
@@ -92,113 +89,57 @@
   const secureLogin = ref(false)
   const router = useRouter()
 
-<<<<<<< Updated upstream:src/components/Login.vue
-  const handleNaverLogin = () => {
-  window.location.href = 'https://pkplantcare.shop/auth/login/naver'
-}
-
-const handleKakaoLogin = () => {
-  console.log('카카오 SNS 로그인 시도')
-  const KAKAO_CLIENT_ID = '669f21005ad795a1f4eefcf640191088'
-  const REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/user_login'
-
-  const params = new URLSearchParams({
-    client_id: KAKAO_CLIENT_ID,
-    redirect_uri: REDIRECT_URI,
-    response_type: 'code',
-    prompt: 'login'
-  })
-
-  const url = `https://kauth.kakao.com/oauth/authorize?${params.toString()}`
-  console.log('카카오 로그인 URL:', url)
-  console.log('리디렉트 시작...')
-  window.location.href = url
-}
-
-const handleGoogleLogin = () => {
-  console.log('구글 SNS 로그인 시도')
-  const GOOGLE_CLIENT_ID = '162578065432-o6q1h9el6psg905bpnb9akvsaskm5ubu.apps.googleusercontent.com'
-  const GOOGLE_REDIRECT_URI = 'https://knupbxftazopklvjionb.supabase.co/functions/v1/googleauth'
-
-  const params = new URLSearchParams({
-    client_id: GOOGLE_CLIENT_ID,
-    redirect_uri: GOOGLE_REDIRECT_URI,
-    response_type: 'code',
-    scope: 'openid email profile',
-    access_type: 'offline',
-    prompt: 'consent'
-  })
-
-  const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
-  console.log('구글 로그인 URL:', url)
-  console.log('리디렉트 시작...')
-  window.location.href = url
-}
-
-  
-  const handleLogin = () => {
-    console.log('로그인', userId.value, userPassword.value, '로그인 유지:', secureLogin.value)
-    // TODO: 로그인 API 연동 또는 인증 로직 추가
-    // 테스트용 간단한 로그인 조건
-    if (userId.value === 'test' && userPassword.value === '1234') {
-      router.push('/community') // 테스트 페이지로 이동
-    } else {
-      alert('아이디 또는 비밀번호가 올바르지 않습니다.')
-=======
-const handleNaverLogin = async () => {
-  await supabase.auth.signInWithOAuth({
-    provider: 'naver',
-    options: {
-      redirectTo: window.location.origin // <-- 이 줄 추가
->>>>>>> Stashed changes:src/components/LoginForm.vue
-    }
-  })
-}
-
-const handleKakaoLogin = async () => {
-  await supabase.auth.signInWithOAuth({
-    provider: 'kakao',
-    options: {
-      redirectTo: window.location.origin // <-- 이 줄 추가
-    }
-  })
-}
-
-const handleGoogleLogin = async () => {
-  await supabase.auth.signInWithOAuth({
-    provider: 'google',
-    options: {
-      redirectTo: window.location.origin // <-- 이 줄 추가
-    }
-  })
-}
-  
-const handleLogin = async () => {
-  try {
-    // Supabase에 이메일과 비밀번호로 로그인 요청
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: userId.value, // userId는 이메일을 입력받는 변수입니다.
-      password: userPassword.value,
+  // redirectTo가 포함된 Supabase 클라이언트 방식 사용
+  const handleNaverLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'naver',
+      options: {
+        redirectTo: window.location.origin
+      }
     })
-
-    if (error) {
-      // 로그인 실패 시 사용자에게 알림
-      console.error('로그인 에러:', error.message)
-      alert('아이디 또는 비밀번호가 올바르지 않습니다.')
-    } else {
-      // 로그인 성공 시
-      console.log('로그인 성공:', data)
-      // 요청하신 대로 커뮤니티 페이지로 이동
-      router.push('/community')
-    }
-  } catch (error) {
-    console.error('알 수 없는 에러:', error)
-    alert('로그인 중 알 수 없는 오류가 발생했습니다.')
   }
-}
+
+  const handleKakaoLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'kakao',
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+  }
+
+  const handleGoogleLogin = async () => {
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    })
+  }
+  
+  // 실제 이메일 로그인 기능
+  const handleLogin = async () => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: userId.value,
+        password: userPassword.value,
+      })
+
+      if (error) {
+        console.error('로그인 에러:', error.message)
+        alert('아이디 또는 비밀번호가 올바르지 않습니다.')
+      } else {
+        console.log('로그인 성공:', data)
+        router.push('/community')
+      }
+    } catch (error) {
+      console.error('알 수 없는 에러:', error)
+      alert('로그인 중 알 수 없는 오류가 발생했습니다.')
+    }
+  }
   
   const goToSignup = () => {
-  router.push('/signup')
+    router.push('/signup')
   }
   </script>
   
