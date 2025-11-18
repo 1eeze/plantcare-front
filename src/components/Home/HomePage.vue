@@ -177,9 +177,55 @@ import plant_pic from '../../assets/plant.png'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
-const analyzingPest = ref(false)      // 로딩 스피너용
-const pestResult = ref(null)          // 최근 분석 결과
+const analyzingPest = ref(false)
+const pestResult = ref(null)
 const pestError = ref('') 
+
+// --- [핵심 수정] 닉네임 기본값 설정 ---
+const userName = ref('식물집사') // 기본값
+const location = ref('Seoul, KOREA')
+// -----------------------------------
+
+const showMenu = ref(false)
+const hasNotifications = ref(true)
+const notificationCount = ref(3)
+const showCameraChoice = ref(false)
+
+const weather = ref({
+  temp: 0,
+  description: '로딩 중…',
+  humidity: 0,
+  uv: '-'
+})
+const loadingWeather = ref(false)
+const todayTip = ref('오늘의 날씨에 맞춰 식물 관리 팁을 불러오는 중이에요.')
+const plants = ref([])
+let channel = null
+
+const todayTasks = ref([
+  { id: 1, plantName: '몬스테라', icon: '💧', description: '토양습도 25% - 물주기 필요', completed: false, priority: 'high' },
+  { id: 2, plantName: '고무나무', icon: '☀️', description: '조도 40% - 밝은 곳으로 이동', completed: false, priority: 'medium' }
+])
+
+// --- [추가됨] 닉네임 불러오기 함수 ---
+const loadUserNickname = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data, error } = await supabase
+      .from('Users')
+      .select('name') // 닉네임 컬럼 가져오기
+      .eq('id', user.id)
+      .single()
+
+    if (data && data.name) {
+      userName.value = data.name // 닉네임 반영
+    }
+  } catch (e) {
+    console.error('닉네임 로드 실패:', e)
+  }
+}
 
 const PEST_DICTIONARY = {
   "Spodoptera_litura_egg": {
@@ -190,13 +236,11 @@ const PEST_DICTIONARY = {
     kr_name: "담배나방 애벌레 (면화다래나방)",
     description: "담배, 목화, 토마토 등 다양한 작물의 잎과 열매를 갉아먹는 심각한 해충입니다."
   },
-  // TODO: 나머지 클래스들도 여기에 추가
   "default": {
     kr_name: "알 수 없는 병충해",
     description: "데이터베이스에 등록되지 않은 정보입니다."
   }
 }
-// 에러 메시지
 
 async function analyzePest(imageFile) {
   const API_URL = "https://detectbug-740384497388.asia-southeast1.run.app/predict"
@@ -247,26 +291,18 @@ async function analyzePest(imageFile) {
   }
 }
 
-let channel = null
-
 // Supabase Realtime — insert/update/delete 시 자동 새로고침
-onMounted(() => {
-  setupRealtime()
-})
-
 async function setupRealtime() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
 
-  // 기존 채널이 있다면 정리하고 재구독
   if (channel) {
     supabase.removeChannel(channel)
     channel = null
   }
 
   channel = supabase
-    .channel('public:plants') // 채널 이름은 임의 지정 가능
-    // INSERT: 새 카드 즉시 추가
+    .channel('public:plants')
     .on(
       'postgres_changes',
       { event: 'INSERT', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
@@ -290,7 +326,6 @@ async function setupRealtime() {
         })
       }
     )
-    // UPDATE: 값만 교체
     .on(
       'postgres_changes',
       { event: 'UPDATE', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
@@ -310,7 +345,6 @@ async function setupRealtime() {
         }
       }
     )
-    // DELETE: 목록에서 제거
     .on(
       'postgres_changes',
       { event: 'DELETE', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
@@ -333,43 +367,24 @@ async function ensureDevSession() {
   }
 }
 
-const showMenu = ref(false)
-const userName = ref('식물집사')
-const location = ref('Seoul, KOREA')
-const hasNotifications = ref(true)
-const notificationCount = ref(3)
-
-const weather = ref({
-  temp: 0,
-  description: '로딩 중…',
-  humidity: 0,
-  uv: '-'
-})
-
-const loadingWeather = ref(false)
-
 function isDaytime(cur) {
   if (!cur?.dt || !cur?.sunrise || !cur?.sunset) return true
   return cur.dt >= cur.sunrise && cur.dt <= cur.sunset
 }
 
 function tipFromWeather({ temp, humidity, uvi, weatherId, day }) {
-  // 1) 온도 기반
   if (temp <= 0) return '기온이 매우 낮아요. 찬바람을 피하고 물주는 간격을 늘려주세요.'
   if (temp >= 30) return '더운 날씨예요. 통풍을 잘 시켜주고 갑작스러운 직사광선은 피해주세요.'
 
-  // 2) 습도 기반
   if (humidity <= 35) return '실내가 많이 건조해요. 가습기나 물트레이로 습도를 조금 올려주세요.'
   if (humidity >= 75) return '습도가 높아요. 과습으로 인한 뿌리 문제를 주의해주세요.'
 
-  // 3) 자외선/날씨 코드 기반
   const g = Math.floor((weatherId || 800) / 100)
   if (uvi >= 6 && day) return '자외선이 강한 날이에요. 햇빛에 약한 식물은 창가에서 조금 떨어뜨려 두세요.'
   if ([2, 3, 5].includes(g)) return '비가 오는 날이에요. 흙이 마르기 전까지는 물주기를 잠시 쉬어주세요.'
   if (g === 6) return '눈 또는 진눈깨비가 오는 날이에요. 찬 공기를 직접 맞지 않게 해주세요.'
   if (weatherId === 800 && day) return '맑고 화창한 날이에요. 광을 좋아하는 식물은 창가 근처로 옮겨보세요.'
 
-  // 4) 기본 문구
   if (day) return '오늘은 흙 상태를 먼저 확인하고 필요한 식물에만 물을 줘보세요.'
   return '밤에는 물주기보단 통풍과 온도 관리를 신경 써주세요.'
 }
@@ -377,10 +392,9 @@ function tipFromWeather({ temp, humidity, uvi, weatherId, day }) {
 async function loadWeather() {
   loadingWeather.value = true
   try {
-    // ✅ 1) 사용자 위치 가져오기 (없으면 서울)
     const coords = await new Promise((resolve) => {
       if (!navigator.geolocation) {
-        return resolve({ lat: 37.5665, lon: 126.9780 }) // 서울 좌표
+        return resolve({ lat: 37.5665, lon: 126.9780 })
       }
       navigator.geolocation.getCurrentPosition(
         pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
@@ -389,14 +403,12 @@ async function loadWeather() {
       )
     })
 
-    // ✅ 2) OpenWeather One Call 3.0 API 호출
     const key = import.meta.env.VITE_OWM_KEY
     const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${coords.lat}&lon=${coords.lon}&units=metric&lang=kr&exclude=minutely,hourly,daily,alerts&appid=${key}`
 
     const res = await fetch(url)
     const data = await res.json()
 
-    // ✅ 3) 데이터 반영
     const cur = data.current
     weather.value = {
       temp: Math.round(cur.temp),
@@ -412,18 +424,12 @@ async function loadWeather() {
       weatherId: cur.weather?.[0]?.id ?? 800,
       day: isDaytime(cur)
     })
-
-    console.log('날씨:', weather.value)
   } catch (err) {
     console.error('날씨 불러오기 실패:', err)
   } finally {
     loadingWeather.value = false
   }
 }
-
-const todayTip = ref('오늘의 날씨에 맞춰 식물 관리 팁을 불러오는 중이에요.')
-
-const plants = ref([])
 
 // DB → UI 데이터 매핑
 const loadPlants = async () => {
@@ -437,7 +443,6 @@ const loadPlants = async () => {
     sensor_moisture, sensor_light, sensor_humidity, temperature,
     created_at, updated_at, needs_attention, status
   `)
-
   .eq('user_id', user.id)
   .order('created_at', { ascending: false })
 
@@ -465,14 +470,17 @@ const loadPlants = async () => {
   }))
 }
 
+// 라이프사이클 훅
 onMounted(async () => {
   await ensureDevSession()
+  await loadUserNickname() // [추가] 닉네임 로드
   await loadPlants()
   await setupRealtime()
   await loadWeather()
 })
 
 onActivated(async () => {
+  await loadUserNickname() // [추가] 화면 다시 돌아올 때 갱신
   await loadPlants()
 })
 
@@ -483,65 +491,12 @@ onUnmounted(() => {
   }
 })
 
-const todayTasks = ref([
-  {
-    id: 1,
-    plantName: '몬스테라',
-    icon: '💧',
-    description: '토양습도 25% - 물주기 필요',
-    completed: false,
-    priority: 'high'
-  },
-  {
-    id: 2,
-    plantName: '고무나무',
-    icon: '☀️',
-    description: '조도 40% - 밝은 곳으로 이동',
-    completed: false,
-    priority: 'medium'
-  }
-])
-
 const toggleMenu = () => {
   showMenu.value = !showMenu.value
 }
 
-const showCameraChoice = ref(false)   // 촬영/선택 모달 표시 여부
-
-
 const openCamera = () => {
   showCameraChoice.value = true
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.capture = 'environment'
-
-  input.onchange = async (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-
-    console.log('이미지 선택됨:', file.name)
-
-    analyzingPest.value = true
-    pestError.value = ''
-    pestResult.value = null
-
-    // 콜드 스타트 때문에 처음엔 오래 걸릴 수 있음
-    const result = await analyzePest(file)
-
-    pestResult.value = result
-    analyzingPest.value = false
-
-    // 일단은 알림/console로 확인 (나중에 전용 화면/모달로 예쁘게)
-    const confidenceText = result.confidence != null
-      ? `신뢰도: ${(result.confidence * 100).toFixed(1)}%`
-      : ''
-
-    alert(`${result.kr_name}\n${confidenceText}\n\n${result.description}`)
-    console.log('최종 화면 표시용 결과:', result)
-  }
-
-  input.click()
 }
 
 const handleImageFile = async (file) => {
@@ -549,15 +504,15 @@ const handleImageFile = async (file) => {
 
   console.log('이미지 선택됨:', file.name)
 
-  showCameraChoice.value = false      // 모달 닫기
-  analyzingPest.value = true          // 전체 로딩 ON
+  showCameraChoice.value = false
+  analyzingPest.value = true
   pestError.value = ''
   pestResult.value = null
 
   const result = await analyzePest(file)
 
   pestResult.value = result
-  analyzingPest.value = false         // 로딩 OFF
+  analyzingPest.value = false
 
   const confidenceText = result.confidence != null
     ? `신뢰도: ${(result.confidence * 100).toFixed(1)}%`
@@ -571,7 +526,7 @@ const takePhoto = () => {
   const input = document.createElement('input')
   input.type = 'file'
   input.accept = 'image/*'
-  input.capture = 'environment'   // 카메라로 바로 연결 (모바일에서)
+  input.capture = 'environment'
 
   input.onchange = async (e) => {
     const file = e.target.files[0]
@@ -584,7 +539,7 @@ const takePhoto = () => {
 const pickFromGallery = () => {
   const input = document.createElement('input')
   input.type = 'file'
-  input.accept = 'image/*'        // 캡쳐 X → 갤러리 우선
+  input.accept = 'image/*'
 
   input.onchange = async (e) => {
     const file = e.target.files[0]
@@ -629,39 +584,9 @@ const completeTask = (taskId) => {
   }
 }
 
-const getSensorClass = (type, value) => {
-  if (type === 'moisture') {
-    if (value < 30) return 'sensor-low'      // 토양습도 30% 미만 - 물부족
-    if (value < 60) return 'sensor-medium'   // 30-60% - 보통
-    return 'sensor-good'                     // 60% 이상 - 충분
-  }
-  if (type === 'light') {
-    if (value < 40) return 'sensor-low'      // 조도 40% 미만 - 어두움
-    if (value < 70) return 'sensor-medium'   // 40-70% - 보통
-    return 'sensor-good'                     // 70% 이상 - 밝음
-  }
-  if (type === 'humidity') {
-    if (value < 40) return 'sensor-low'      // 습도 40% 미만 - 건조
-    if (value < 70) return 'sensor-medium'   // 40-70% - 보통
-    return 'sensor-good'                     // 70% 이상 - 습함
-  }
-  return 'sensor-medium'
-}
-
 const getOverallStatusClass = (plant) => {
   if (plant.needsAttention) return 'status-warning'
   return 'status-normal'
-}
-
-const formatLastUpdated = (timestamp) => {
-  const date = new Date(timestamp)
-  const now = new Date()
-  const diffMinutes = Math.floor((now - date) / (1000 * 60))
-  
-  if (diffMinutes < 1) return '방금 전'
-  if (diffMinutes < 60) return `${diffMinutes}분 전`
-  if (diffMinutes < 1440) return `${Math.floor(diffMinutes / 60)}시간 전`
-  return `${Math.floor(diffMinutes / 1440)}일 전`
 }
 </script>
 

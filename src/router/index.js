@@ -76,6 +76,12 @@ const routes = [
         component: ProfilePage,
         meta: { requiresAuth: true }
       },
+      { 
+        path: 'profile/:userId',  // 주소 뒤에 ID가 붙으면 (예: /profile/user123)
+        name: 'UserProfile',
+        component: ProfilePage,   // 똑같은 프로필 화면을 보여줍니다
+        meta: { requiresAuth: true }
+      },
       {
         path: 'profile/edit',
         name: 'ProfileEdit',
