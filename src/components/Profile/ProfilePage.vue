@@ -341,24 +341,7 @@ const sellingPosts = ref([
     views: 203
   }
 ])
-const myPlants = ref([
-  {
-    id: 1,
-    name: '몬스테라 델리시오사',
-    type: '몬스테라',
-    image: plantImg1,
-    health: 'excellent',
-    daysOwned: 142
-  },
-  {
-    id: 2,
-    name: '고무나무',
-    type: '피쿠스',
-    image: plantImg1,
-    health: 'good',
-    daysOwned: 89
-  }
-])
+const myPlants = ref([])
 const reviews = ref([
   {
     id: 1,
@@ -383,13 +366,22 @@ const photos = ref([
   }
 ])
 
+// JSONB 배열에서 최신 값 추출 헬퍼 함수
+const getLatestSensorValue = (jsonbArray) => {
+  if (!jsonbArray || !Array.isArray(jsonbArray) || jsonbArray.length === 0) {
+    return null
+  }
+  return jsonbArray[0]?.value ?? null
+}
+
 // (우리의 로직 적용) onMounted 수정
 onMounted(async () => {
   console.log('프로필 로드됨 (팀원 로그)')
   try {
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return 
+    if (!user) return
 
+    // 사용자 프로필 정보 로드
     const { data, error } = await supabase
       .from('Users')
       .select('name, avatar_url')
@@ -397,18 +389,66 @@ onMounted(async () => {
       .single()
 
     // '행 없음' (PGRST116) 이외의 에러만 throw
-    if (error && error.code !== 'PGRST116') throw error 
-    
+    if (error && error.code !== 'PGRST116') throw error
+
     if (data) {
       if (data.name) {
-        // (우리의 로직) 팀원의 더미 닉네임 대신 실제 닉네임 삽입
-        nickname.value = data.name 
-        userProfile.value.username = data.name // (추가) 팀원 UI에도 반영
+        nickname.value = data.name
+        userProfile.value.username = data.name
       }
       if (data.avatar_url) {
-        // (우리의 로직) 팀원의 더미 프로필 대신 실제 프로필 사진 삽입
         profileImage.value = data.avatar_url
       }
+    }
+
+    // 내 식물 목록 로드
+    const { data: plantsData, error: plantsError } = await supabase
+      .from('User_Plants')
+      .select(`
+        id, name, photos, created_at, updated_at,
+        sensor_data:sensor_data!User_Plants_sensor_data_fkey (
+          humidity, temp, light
+        )
+      `)
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+
+    if (plantsError) {
+      console.error('식물 목록 로드 실패:', plantsError)
+    } else {
+      myPlants.value = (plantsData || []).map(p => {
+        const sensorData = p.sensor_data
+        const humidity = getLatestSensorValue(sensorData?.humidity) ?? 50
+        const temp = getLatestSensorValue(sensorData?.temp) ?? 22
+        const light = getLatestSensorValue(sensorData?.light) ?? 70
+
+        // 건강 상태 판단
+        let health = 'excellent'
+        if (humidity < 30 || temp < 15 || temp > 30 || light < 40) {
+          health = 'poor'
+        } else if (humidity < 40 || light < 50) {
+          health = 'fair'
+        } else if (humidity < 50 || light < 60) {
+          health = 'good'
+        }
+
+        // 키운 일수 계산
+        const createdDate = new Date(p.created_at)
+        const today = new Date()
+        const daysOwned = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24))
+
+        return {
+          id: p.id,
+          name: p.name || '이름 없음',
+          type: '식물', // TODO: 식물 종류 정보 추가 필요
+          image: (p.photos && p.photos[0]?.url) || plantImg1,
+          health: health,
+          daysOwned: daysOwned
+        }
+      })
+
+      // 통계 업데이트
+      userStats.value.plantsCount = myPlants.value.length
     }
 
   } catch (error) {

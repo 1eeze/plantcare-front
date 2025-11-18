@@ -349,21 +349,25 @@ const savePlant = async () => {
 
     // (E) DB insert (RLS 대비 user_id 등 컬럼 포함: 스키마에 맞춰 조정)
     const { error: insertError } = await supabase
-      .from('plants')
+      .from('User_Plants')
       .insert({
-        user_id: user?.id ?? null,             // ← RLS가 auth.uid() 요구시 중요
+        user_id: user?.id,                     // ← RLS가 auth.uid() 요구시 중요 (null 제거)
         name: plant.value.name,
         locate: plant.value.location,
         photos: [{ url: publicUrl, is_main: true }],
-        sensor_moisture: sensorData.value.soilMoisture,
-        sensor_light:    sensorData.value.lightLevel,
-        sensor_humidity: sensorData.value.humidity,
-        temperature:     sensorData.value.temperature
       })
-    if (insertError) throw insertError
+    if (insertError) {
+      console.error('DB Insert Error 상세:', {
+        message: insertError.message,
+        details: insertError.details,
+        hint: insertError.hint,
+        code: insertError.code
+      })
+      throw insertError
+    }
 
     alert('식물이 성공적으로 등록되었습니다! 🌱')
-    router.push({ name: 'Home', query: { refresh: Date.now() } })
+    router.push({ name: 'HomePage', query: { refresh: Date.now() } })
   } catch (error) {
     console.error('저장 실패:', error)
     alert(`저장 중 오류가 발생했습니다.\n${error?.message ?? ''}`)

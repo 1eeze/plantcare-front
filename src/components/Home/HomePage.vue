@@ -265,57 +265,40 @@ async function setupRealtime() {
   }
 
   channel = supabase
-    .channel('public:plants') // 채널 이름은 임의 지정 가능
-    // INSERT: 새 카드 즉시 추가
+    .channel('public:User_Plants')
+    // INSERT: 새 식물 추가 시
     .on(
       'postgres_changes',
-      { event: 'INSERT', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
-      ({ new: p }) => {
-        plants.value.unshift({
-          id: p.id,
-          name: p.name,
-          image: (p.photos && p.photos[0]?.url) || plant_pic,
-          soilMoisture: p.sensor_moisture ?? 0,
-          lightLevel:   p.sensor_light ?? 0,
-          humidity:     p.sensor_humidity ?? 0,
-          temperature:  p.temperature ?? 0,
-          lastUpdated:  p.updated_at || '',
-          needsAttention: !!p.needs_attention,
-          status: p.status || '상태 양호',
-          display: {
-            moisture: `💧 ${p.sensor_moisture ?? 0}%`,
-            light:    `☀️ ${p.sensor_light ?? 0}%`,
-            humidity: `🌱 ${p.sensor_humidity ?? 0}%`
-          }
-        })
+      { event: 'INSERT', schema: 'public', table: 'User_Plants', filter: `user_id=eq.${user.id}` },
+      async ({ new: p }) => {
+        // 전체 목록 다시 로드 (센서 데이터 포함)
+        await loadPlants()
       }
     )
-    // UPDATE: 값만 교체
+    // UPDATE: 식물 정보 변경 시
     .on(
       'postgres_changes',
-      { event: 'UPDATE', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
-      ({ new: p }) => {
-        const i = plants.value.findIndex(x => x.id === p.id)
-        if (i !== -1) {
-          plants.value[i] = {
-            ...plants.value[i],
-            soilMoisture: p.sensor_moisture ?? 0,
-            lightLevel:   p.sensor_light ?? 0,
-            humidity:     p.sensor_humidity ?? 0,
-            temperature:  p.temperature ?? 0,
-            lastUpdated:  p.updated_at || '',
-            status:       p.status || plants.value[i].status,
-            needsAttention: !!p.needs_attention,
-          }
-        }
+      { event: 'UPDATE', schema: 'public', table: 'User_Plants', filter: `user_id=eq.${user.id}` },
+      async ({ new: p }) => {
+        // 전체 목록 다시 로드
+        await loadPlants()
       }
     )
-    // DELETE: 목록에서 제거
+    // DELETE: 식물 삭제 시
     .on(
       'postgres_changes',
-      { event: 'DELETE', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` },
+      { event: 'DELETE', schema: 'public', table: 'User_Plants', filter: `user_id=eq.${user.id}` },
       ({ old }) => {
         plants.value = plants.value.filter(x => x.id !== old.id)
+      }
+    )
+    // sensor_data 업데이트 감지 (센서 값 변경 시 실시간 반영)
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'sensor_data' },
+      async () => {
+        // 센서 데이터가 변경되면 전체 목록 다시 로드
+        await loadPlants()
       }
     )
     .subscribe()
@@ -425,44 +408,77 @@ const todayTip = ref('오늘의 날씨에 맞춰 식물 관리 팁을 불러오�
 
 const plants = ref([])
 
+// JSONB 배열에서 최신 값 추출 (배열 첫 번째 항목)
+const getLatestSensorValue = (jsonbArray) => {
+  if (!jsonbArray || !Array.isArray(jsonbArray) || jsonbArray.length === 0) {
+    return null
+  }
+  return jsonbArray[0]?.value ?? null
+}
+
 // DB → UI 데이터 매핑
 const loadPlants = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  
-  const { data, error } = await supabase
-  .from('plants')
-  .select(`
-    id, user_id, name, locate, photos,
-    sensor_moisture, sensor_light, sensor_humidity, temperature,
-    created_at, updated_at, needs_attention, status
-  `)
 
-  .eq('user_id', user.id)
-  .order('created_at', { ascending: false })
+  // User_Plants와 sensor_data 조인
+  const { data, error } = await supabase
+    .from('User_Plants')
+    .select(`
+      id, user_id, name, locate, photos,
+      created_at, updated_at,
+      sensor_data:sensor_data!User_Plants_sensor_data_fkey (
+        humidity, temp, light
+      )
+    `)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
 
   if (error) {
     console.error('식물 목록 로드 실패:', error)
     return
   }
 
-  plants.value = (data || []).map(p => ({
-    id: p.id,
-    name: p.name,
-    image: (p.photos && p.photos[0]?.url) || plant_pic,
-    soilMoisture: p.sensor_moisture ?? 0,
-    lightLevel: p.sensor_light ?? 0,
-    humidity: p.sensor_humidity ?? 0,
-    temperature: p.temperature ?? 0,
-    lastUpdated: p.updated_at || '',
-    needsAttention: !!p.needs_attention,
-    status: p.status || '상태 양호',
-    display: {
-      moisture: `💧 ${p.sensor_moisture ?? 0}%`,
-      light: `☀️ ${p.sensor_light ?? 0}%`,
-      humidity: `🌱 ${p.sensor_humidity ?? 0}%`
+  plants.value = (data || []).map(p => {
+    // 센서 데이터 추출
+    const sensorData = p.sensor_data
+    const humidity = getLatestSensorValue(sensorData?.humidity)
+    const temp = getLatestSensorValue(sensorData?.temp)
+    const light = getLatestSensorValue(sensorData?.light)
+
+    // 센서 값이 있으면 사용, 없으면 기본값
+    const humidityValue = humidity ?? 50
+    const tempValue = temp ?? 22
+    const lightValue = light ?? 70
+
+    // 주의 필요 여부 판단 (습도 30% 미만, 온도 15도 미만 또는 30도 초과, 조도 40% 미만)
+    const needsAttention = humidityValue < 30 || tempValue < 15 || tempValue > 30 || lightValue < 40
+
+    // 상태 텍스트
+    let status = '상태 양호'
+    if (humidityValue < 30) status = '물 부족'
+    else if (lightValue < 40) status = '빛 부족'
+    else if (tempValue < 15) status = '온도 낮음'
+    else if (tempValue > 30) status = '온도 높음'
+
+    return {
+      id: p.id,
+      name: p.name,
+      image: (p.photos && p.photos[0]?.url) || plant_pic,
+      soilMoisture: humidityValue,
+      lightLevel: lightValue,
+      humidity: humidityValue,
+      temperature: tempValue,
+      lastUpdated: p.updated_at || '',
+      needsAttention: needsAttention,
+      status: status,
+      display: {
+        moisture: `💧 ${Math.round(humidityValue)}%`,
+        light: `☀️ ${Math.round(lightValue)}%`,
+        humidity: `🌱 ${Math.round(humidityValue)}%`
+      }
     }
-  }))
+  })
 }
 
 onMounted(async () => {
