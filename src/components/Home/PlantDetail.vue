@@ -60,7 +60,7 @@
           <div class="sensor-card" :class="getSensorStatusClass('humidity', currentSensorValues.humidity)">
             <div class="sensor-icon">💧</div>
             <div class="sensor-info">
-              <span class="sensor-label">토양 습도</span>
+              <span class="sensor-label">대기 습도</span>
               <span class="sensor-value">{{ currentSensorValues.humidity?.toFixed(1) ?? '-' }}%</span>
               <span class="sensor-status">{{ getSensorStatusText('humidity', currentSensorValues.humidity) }}</span>
             </div>
@@ -70,7 +70,7 @@
             <div class="sensor-icon">☀️</div>
             <div class="sensor-info">
               <span class="sensor-label">조도</span>
-              <span class="sensor-value">{{ currentSensorValues.light?.toFixed(1) ?? '-' }}%</span>
+              <span class="sensor-value">{{ currentSensorValues.light?.toFixed(1) ?? '-' }} lux</span>
               <span class="sensor-status">{{ getSensorStatusText('light', currentSensorValues.light) }}</span>
             </div>
           </div>
@@ -92,13 +92,13 @@
 
         <!-- 습도 차트 -->
         <div class="chart-card">
-          <h4>💧 토양 습도</h4>
+          <h4>💧 대기 습도</h4>
           <apexchart
             v-if="humidityChartData.length > 0"
             type="line"
             height="200"
             :options="getChartOptions('습도 (%)', '#3498db')"
-            :series="[{ name: '습도', data: humidityChartData }]"
+            :series="[{ name: '대기 습도', data: humidityChartData }]"
           ></apexchart>
           <p v-else class="no-data">데이터가 없습니다</p>
         </div>
@@ -110,7 +110,7 @@
             v-if="lightChartData.length > 0"
             type="line"
             height="200"
-            :options="getChartOptions('조도 (%)', '#f39c12')"
+            :options="getChartOptions('조도 (lux)', '#f39c12')"
             :series="[{ name: '조도', data: lightChartData }]"
           ></apexchart>
           <p v-else class="no-data">데이터가 없습니다</p>
@@ -138,7 +138,7 @@
             <thead>
               <tr>
                 <th>시간</th>
-                <th>토양 습도</th>
+                <th>대기 습도</th>
                 <th>조도</th>
                 <th>온도</th>
               </tr>
@@ -147,7 +147,7 @@
               <tr v-for="(row, index) in recentSensorData" :key="index">
                 <td>{{ formatDateTime(row.timestamp) }}</td>
                 <td>{{ row.humidity?.toFixed(1) ?? '-' }}%</td>
-                <td>{{ row.light?.toFixed(1) ?? '-' }}%</td>
+                <td>{{ row.light?.toFixed(1) ?? '-' }} lux</td>
                 <td>{{ row.temp?.toFixed(1) ?? '-' }}°C</td>
               </tr>
             </tbody>
