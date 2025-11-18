@@ -631,9 +631,12 @@ onMounted(() => {
 
 .header h1 {
   margin: 0;
-  font-size: 22px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   color: #2c3e50;
+  line-height: 1;
+  display: flex;
+  align-items: center;
 }
 
 .header-actions {
