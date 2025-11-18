@@ -192,35 +192,61 @@ const loadPlantData = async () => {
       return
     }
 
-    // 식물 정보와 센서 데이터 JOIN하여 가져오기
-    const { data, error } = await supabase
+    // 1단계: User_Plants에서 식물 정보 가져오기
+    const { data: plantData, error: plantError } = await supabase
       .from('User_Plants')
-      .select(`
-        id, name, locate, photos, created_at, updated_at,
-        sensor_data:sensor_data!User_Plants_sensor_data_fkey (
-          humidity, temp, light
-        )
-      `)
+      .select('id, name, locate, photos, created_at, updated_at')
       .eq('id', plantId)
       .eq('user_id', user.id)
       .single()
 
-    if (error) {
-      console.error('식물 데이터 로드 실패:', error)
+    console.log('=== PlantDetail 데이터 로드 ===')
+    console.log('1. plantId:', plantId)
+    console.log('2. user.id:', user.id)
+    console.log('3. User_Plants 데이터:', plantData)
+    console.log('4. User_Plants 에러:', plantError)
+
+    if (plantError) {
+      console.error('식물 데이터 로드 실패:', plantError)
       plant.value = null
       return
     }
 
-    if (!data) {
+    if (!plantData) {
+      console.log('plantData가 null입니다')
       plant.value = null
       return
+    }
+
+    // 2단계: sensor_data 테이블에서 센서 데이터 가져오기
+    console.log('5. sensor_data 테이블 조회 시작 - plant_id:', plantId)
+    const { data: sensorDataRaw, error: sensorError } = await supabase
+      .from('sensor_data')
+      .select('humidity, temp, light, plant_id')
+      .eq('plant_id', plantId)
+      .single()
+
+    console.log('6. sensor_data 응답:', sensorDataRaw)
+    console.log('7. sensor_data 에러:', sensorError)
+
+    if (sensorError) {
+      console.error('센서 데이터 로드 실패:', sensorError)
+    }
+
+    if (sensorDataRaw) {
+      console.log('8. humidity 데이터:', sensorDataRaw.humidity)
+      console.log('9. temp 데이터:', sensorDataRaw.temp)
+      console.log('10. light 데이터:', sensorDataRaw.light)
     }
 
     // 센서 데이터에서 최신 값 추출
-    const sensorDataRaw = data.sensor_data
     const latestHumidity = sensorDataRaw?.humidity?.[0]?.value
     const latestLight = sensorDataRaw?.light?.[0]?.value
     const latestTemp = sensorDataRaw?.temp?.[0]?.value
+
+    console.log('11. 최신 습도:', latestHumidity)
+    console.log('12. 최신 조도:', latestLight)
+    console.log('13. 최신 온도:', latestTemp)
 
     // 식물 상태 계산
     let status = '상태 양호'
@@ -235,19 +261,19 @@ const loadPlantData = async () => {
     }
 
     plant.value = {
-      id: data.id,
-      name: data.name || '이름 없음',
-      location: data.locate,
-      image: (data.photos && data.photos[0]?.url) || plantPic,
-      created_at: data.created_at,
-      updated_at: data.updated_at,
+      id: plantData.id,
+      name: plantData.name || '이름 없음',
+      location: plantData.locate,
+      image: (plantData.photos && plantData.photos[0]?.url) || plantPic,
+      created_at: plantData.created_at,
+      updated_at: plantData.updated_at,
       status: status
     }
 
     sensorData.value = sensorDataRaw
 
-    console.log('로드된 식물 데이터:', plant.value)
-    console.log('로드된 센서 데이터:', sensorData.value)
+    console.log('14. 로드된 식물 데이터:', plant.value)
+    console.log('15. 로드된 센서 데이터:', sensorData.value)
 
   } catch (error) {
     console.error('데이터 로드 중 오류:', error)
