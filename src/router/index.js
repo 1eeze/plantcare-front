@@ -16,9 +16,10 @@ import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
 import WritePost from '@/components/Community/WritePost.vue'
 import ProfilePage from '@/components/Profile/ProfilePage.vue'
-import ProfileEdit from '@/components/Profile/ProfileEdit.vue';
+import ProfileEdit from '@/components/Profile/ProfileEdit.vue'
 import LoginSuccess from '@/components/LoginSuccess.vue'
 import UpdatePassword from '@/components/UpdatePassword.vue'
+import ChatRoom from '@/components/chat/ChatRoom.vue'
 
 const routes = [
   {
@@ -77,9 +78,9 @@ const routes = [
         meta: { requiresAuth: true }
       },
       { 
-        path: 'profile/:userId',  // 주소 뒤에 ID가 붙으면 (예: /profile/user123)
+        path: 'profile/:userId',
         name: 'UserProfile',
-        component: ProfilePage,   // 똑같은 프로필 화면을 보여줍니다
+        component: ProfilePage,
         meta: { requiresAuth: true }
       },
       {
@@ -89,6 +90,13 @@ const routes = [
         meta: { requiresAuth: true }
       }
     ]
+  },
+  {
+    path: '/chat/:id',
+    name: 'ChatRoom',
+    component: ChatRoom,
+    props: true,
+    meta: { requiresAuth: true }
   },
   {
     path: '/login',
@@ -154,19 +162,15 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to, from, next) => {
-  
-  // 1. 공개 페이지 ('/auth/callback' 포함)
   const publicPaths = ['/login', '/signup', '/login-success', '/auth/callback']
   if (publicPaths.includes(to.path) || to.path.startsWith('/signup')) {
-    next() // 통과
+    next()
     return
   }
 
-  // 2. 세션 확인
   const { data: { session } } = await supabase.auth.getSession()
 
   if (!session) {
-    // 세션이 없으면 로그인 페이지로 보냄
     next({ 
       name: 'LoginPage',
       query: { redirect: to.fullPath } 
@@ -174,13 +178,11 @@ router.beforeEach(async (to, from, next) => {
     return
   }
 
-  // 3. 로그인한 사용자가 /login으로 가면 홈으로
   if (to.name === 'LoginPage') {
     next({ name: 'HomePage' })
     return
   }
 
-  // 4. 닉네임이 있는지 확인
   try {
     const { data: profile, error } = await supabase
       .from('Users')
@@ -188,19 +190,17 @@ router.beforeEach(async (to, from, next) => {
       .eq('id', session.user.id)
       .single()
 
-    if (error && error.code !== 'PGRST116') throw error // '행 없음' 외의 에러
+    if (error && error.code !== 'PGRST116') throw error
 
     if ((!profile || !profile.name) && !to.path.startsWith('/signup')) {
-      // 닉네임 없으면 강제 이동
       alert('추가 정보(닉네임) 입력이 필요합니다.')
       next('/signup/step2')
     } else {
-      // 닉네임 있으면 최종 통과
       next() 
     }
   } catch (error) {
     console.error('프로필 조회 에러 (라우트 가드):', error)
-    next() // 에러 시 일단 통과
+    next()
   }
 })
 

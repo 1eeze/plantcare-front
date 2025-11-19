@@ -3,21 +3,32 @@
     class="chat-popup" 
     :class="{ minimized }"
     :style="popupStyle"
+    @mousedown="focusPopup"
   >
     <div class="chat-header" @mousedown="startDrag">
       <span>{{ title }}</span>
-      <div class="header-controls">
+      <div class="header-controls" @mousedown.stop>
         <button @click="toggleMinimize" class="control-btn">─</button>
         <button @click="$emit('close')" class="control-btn">×</button>
       </div>
     </div>
     
-    <div class="chat-content">
+    <div class="chat-content" v-show="!minimized">
       <div class="chat-messages" ref="messageContainer">
+        
+        <div v-if="messages.length === 0" class="empty-state">
+          <p>대화를 시작해보세요!</p>
+        </div>
+
         <div v-for="msg in messages" 
              :key="msg.id" 
              :class="['message', msg.sender_id === currentUser?.id ? 'my-message' : 'other-message']">
-          <div class="message-content">{{ msg.content }}</div>
+          
+          <div class="message-row">
+            <span v-if="msg.sender_id === currentUser?.id && !msg.is_read" class="unread-mark">읽지 않음</span>
+            <div class="message-content">{{ msg.content }}</div>
+          </div>
+          
           <div class="message-time">{{ formatTime(msg.created_at) }}</div>
         </div>
       </div>
@@ -35,43 +46,23 @@
     <div 
       class="resize-handle"
       @mousedown.stop="startResize"
+      v-show="!minimized"
     ></div>
   </div>
 </template>
 
 <script>
-import { supabase } from '../../utils/supabase'
+import { supabase } from '@/utils/supabase'
 
 export default {
   props: {
-    visible: {
-      type: Boolean,
-      required: true
-    },
-    title: {
-      type: String,
-      required: true
-    },
-    initialMessages: {
-      type: Array,
-      default: () => []
-    },
-    startX: {
-      type: Number,
-      default: 20
-    },
-    startY: {
-      type: Number,
-      default: 20
-    },
-    zIndex: {
-      type: Number,
-      default: 1000
-    },
-    receiverId: {
-      type: String,
-      required: true
-    }
+    visible: { type: Boolean, default: true },
+    title: { type: String, required: true },
+    initialMessages: { type: Array, default: () => [] },
+    startX: { type: Number, default: 20 },
+    startY: { type: Number, default: 20 },
+    zIndex: { type: Number, default: 1000 },
+    receiverId: { type: String, required: true }
   },
 
   data() {
@@ -87,10 +78,10 @@ export default {
       height: 420,
       savedWidth: 320,
       savedHeight: 420,
-      maxWidth: 500,
-      maxHeight: 600,
+      maxWidth: 600,
+      maxHeight: 700,
       minWidth: 280,
-      minHeight: 320,
+      minHeight: 300,
       dragStartX: 0,
       dragStartY: 0,
       left: null,
@@ -101,17 +92,15 @@ export default {
   },
 
   async created() {
-    // localStorage에서 사용자 정보 가져오기
-    const userId = localStorage.getItem('user_id')
-    if (userId) {
-      this.currentUser = { id: userId }
+    const { data: { user } } = await supabase.auth.getUser()
+    
+    if (user) {
+      this.currentUser = user
+      this.loadMessages()
+      this.subscribeToMessages()
     } else {
-      console.warn('로그인된 사용자가 없습니다.')
-      return
+      this.$emit('close')
     }
-
-    this.loadMessages()
-    this.subscribeToMessages()
   },
 
   mounted() {
@@ -124,7 +113,7 @@ export default {
     window.removeEventListener('mousemove', this.onMouseMove)
     window.removeEventListener('mouseup', this.onMouseUp)
     if (this.subscription) {
-      supabase.removeSubscription(this.subscription)
+      supabase.removeChannel(this.subscription)
     }
   },
 
@@ -156,62 +145,108 @@ export default {
         .or(`and(sender_id.eq.${this.currentUser.id},receiver_id.eq.${this.receiverId}),and(sender_id.eq.${this.receiverId},receiver_id.eq.${this.currentUser.id})`)
         .order('created_at', { ascending: true })
 
-      if (error) {
-        console.error('메시지 로드 실패:', error)
-        return
+      if (!error) {
+        this.messages = data
+        // 처음 로드될 때는 창이 열려있으므로 읽음 처리
+        if (!this.minimized) {
+          await this.markMessagesAsRead()
+        }
+        this.scrollToBottom()
       }
+    },
 
-      this.messages = data
-      this.$nextTick(this.scrollToBottom)
+    async markMessagesAsRead() {
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('receiver_id', this.currentUser.id)
+        .eq('sender_id', this.receiverId)
+        .eq('is_read', false)
     },
 
     subscribeToMessages() {
+      const channelName = `popup_${[this.currentUser.id, this.receiverId].sort().join('_')}`
+      if (this.subscription) supabase.removeChannel(this.subscription)
+
       this.subscription = supabase
-        .channel('messages')
+        .channel(channelName)
         .on(
           'postgres_changes',
-          {
-            event: 'INSERT',
-            schema: 'public',
-            table: 'messages',
-            filter: `sender_id=eq.${this.receiverId},receiver_id=eq.${this.currentUser.id}`
-          },
+          { event: 'INSERT', schema: 'public', table: 'messages' },
           (payload) => {
-            this.messages.push(payload.new)
-            this.scrollToBottom()
+            const newMsg = payload.new
+            if (
+              (newMsg.sender_id === this.receiverId && newMsg.receiver_id === this.currentUser.id) ||
+              (newMsg.sender_id === this.currentUser.id && newMsg.receiver_id === this.receiverId)
+            ) {
+              if (!this.messages.some(m => m.id === newMsg.id)) {
+                this.messages.push(newMsg)
+                
+                // [수정] 최소화 상태가 아닐 때만 읽음 처리
+                if (newMsg.sender_id === this.receiverId && !this.minimized) {
+                    this.markMessagesAsRead()
+                }
+                
+                this.scrollToBottom()
+              }
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages' },
+          (payload) => {
+            const target = this.messages.find(m => m.id === payload.new.id)
+            if (target) {
+              target.is_read = payload.new.is_read
+            }
           }
         )
         .subscribe()
     },
 
     async sendMessage() {
-      if (!this.newMessage.trim() || !this.currentUser) return
+      if (!this.newMessage.trim()) return
+      const text = this.newMessage
+      this.newMessage = ''
 
-      const message = {
-        content: this.newMessage,
-        sender_id: this.currentUser.id,
-        receiver_id: this.receiverId
-      }
-
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('messages')
-        .insert(message)
+        .insert({
+          content: text,
+          sender_id: this.currentUser.id,
+          receiver_id: this.receiverId,
+          is_read: false
+        })
+        .select()
+        .single()
 
       if (error) {
-        console.error('메시지 전송 실패:', error)
+        alert('메시지 전송에 실패했습니다.')
         return
       }
 
-      this.newMessage = ''
+      if (data) {
+        this.messages.push(data)
+        this.scrollToBottom()
+      }
+    },
+
+    scrollToBottom() {
+      this.$nextTick(() => {
+        setTimeout(() => {
+            if (this.$refs.messageContainer) {
+            this.$refs.messageContainer.scrollTop = this.$refs.messageContainer.scrollHeight
+            }
+        }, 50) 
+      })
     },
 
     startDrag(e) {
       if (e.target.closest('.control-btn') || e.target.closest('.resize-handle')) return
-      
       const rect = this.$el.getBoundingClientRect()
       this.left = rect.left
       this.top = rect.top
-      
       this.dragging = true
       this.dragStartX = e.clientX
       this.dragStartY = e.clientY
@@ -229,25 +264,18 @@ export default {
       if (this.dragging) {
         const dx = e.clientX - this.dragStartX
         const dy = e.clientY - this.dragStartY
-        
         this.left = Math.max(0, this.left + dx)
         this.top = Math.max(0, this.top + dy)
-        
         this.dragStartX = e.clientX
         this.dragStartY = e.clientY
       }
       else if (this.resizing && !this.minimized) {
-        const width = Math.min(this.maxWidth, Math.max(this.minWidth, 
-          this.width + (e.clientX - this.dragStartX)))
-        const height = Math.min(this.maxHeight, Math.max(this.minHeight, 
-          this.height + (e.clientY - this.dragStartY)))
-        
-        if (width !== this.width) this.width = width
-        if (height !== this.height) this.height = height
-        
+        const dx = e.clientX - this.dragStartX
+        const dy = e.clientY - this.dragStartY
+        this.width = Math.max(this.minWidth, Math.min(this.maxWidth, this.width + dx))
+        this.height = Math.max(this.minHeight, Math.min(this.maxHeight, this.height + dy))
         this.savedWidth = this.width
         this.savedHeight = this.height
-        
         this.dragStartX = e.clientX
         this.dragStartY = e.clientY
       }
@@ -261,17 +289,16 @@ export default {
     toggleMinimize() {
       this.minimized = !this.minimized
       if (!this.minimized) {
+        // [추가] 최소화 해제(창 열기) 시 읽음 처리
+        this.markMessagesAsRead()
+        
         this.width = this.savedWidth
         this.height = this.savedHeight
-        this.$nextTick(this.scrollToBottom)
+        this.scrollToBottom()
       }
     },
-
-    scrollToBottom() {
-      if (this.$refs.messageContainer) {
-        this.$refs.messageContainer.scrollTop = this.$refs.messageContainer.scrollHeight
-      }
-    },
+    
+    focusPopup() {},
 
     formatTime(timestamp) {
       return new Date(timestamp).toLocaleTimeString('ko-KR', {
@@ -309,7 +336,7 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: width 0.3s ease, height 0.3s ease;
+  border: 1px solid #ccc;
 }
 
 .chat-header {
@@ -336,7 +363,6 @@ export default {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  transition: all 0.3s ease;
 }
 
 .chat-popup.minimized .chat-content {
@@ -389,6 +415,26 @@ export default {
 .other-message {
   margin-right: auto;
   text-align: left;
+}
+
+.message-row {
+    display: flex;
+    align-items: flex-end; 
+    gap: 5px;
+    justify-content: flex-end; 
+}
+
+.other-message .message-row {
+    justify-content: flex-start; 
+    flex-direction: row-reverse; 
+}
+
+.unread-mark {
+    font-size: 10px;
+    color: #568265;
+    font-weight: bold;
+    margin-bottom: 2px;
+    white-space: nowrap;
 }
 
 .message-content {
@@ -460,4 +506,16 @@ export default {
   border-right: 2px solid #ccc;
   border-bottom: 2px solid #ccc;
 }
+
+.loading-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #568265;
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+.empty-state { text-align: center; padding: 20px; color: #999; font-size: 12px; }
 </style>

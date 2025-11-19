@@ -60,13 +60,13 @@
           <strong>{{ userStats.plantsCount }}</strong>
           <p>식물</p>
         </div>
-        <div class="stat-item" @click="showSales">
-          <strong>{{ userStats.salesCount }}</strong>
-          <p>판매</p>
-        </div>
         <div class="stat-item" @click="showPosts">
           <strong>{{ userStats.postsCount }}</strong>
           <p>게시글</p>
+        </div>
+        <div class="stat-item" @click="showSales">
+          <strong>{{ userStats.salesCount }}</strong>
+          <p>판매</p>
         </div>
         <div class="stat-item" @click="openFollowModal('followers')">
           <strong>{{ userStats.followersCount }}</strong>
@@ -146,8 +146,6 @@
         </div>
       </div>
     </div>
-
-    <ChatPopup v-if="showChat" :visible="showChat" :title="chatTitle" :receiverId="chatReceiverId" @close="showChat = false" />
     
     <div v-if="showFollowModal" class="modal-overlay" @click="showFollowModal = false">
       <div class="modal-content follow-modal" @click.stop>
@@ -171,7 +169,8 @@ import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 import profileImageUrl from '../../assets/user-profile.png'
 import plantImg1 from '../../assets/plant.png'
-import ChatPopup from '@/components/chat/ChatPopup.vue'
+// [추가] 전역 채팅 스토어 가져오기
+import { chatStore } from '@/utils/chatStore' 
 
 const router = useRouter()
 const route = useRoute()
@@ -181,6 +180,7 @@ const defaultProfileImg = profileImageUrl
 const searchKeyword = ref('')
 const searchResults = ref([])
 const isSearching = ref(false)
+
 const searchUsers = async () => {
   if (!searchKeyword.value.trim()) { searchResults.value = []; return }
   isSearching.value = true
@@ -199,9 +199,6 @@ const nickname = ref('')
 const activeTab = ref('selling')
 const isFollowing = ref(false)
 const currentUserId = ref(null)
-const showChat = ref(false)
-const chatReceiverId = ref('')
-const chatTitle = ref('')
 
 // 팔로우 모달
 const showFollowModal = ref(false)
@@ -300,10 +297,27 @@ const openFollowModal = async (type) => {
   } catch (e) { console.error(e) }
 }
 
-watch(() => route.params.userId, loadProfile)
-onMounted(loadProfile)
+// --- [수정] 채팅 시작 함수 (전역 스토어 사용) ---
+const startChat = () => {
+  const targetId = route.params.userId
+  const targetName = nickname.value
+  
+  if (!targetId || !targetName || targetId === currentUserId.value) return
 
-const startChat = () => { chatReceiverId.value = route.params.userId; chatTitle.value = `${nickname.value}님과의 대화`; showChat.value = true }
+  // 전역 스토어를 통해 팝업 열기
+  chatStore.openChat(targetId, targetName)
+}
+// ---
+
+// 라우트 변경 감지
+watch(() => route.params.userId, () => {
+  loadProfile()
+})
+
+onMounted(() => {
+  loadProfile()
+})
+
 const editProfile = () => router.push({ name: 'ProfileEdit' })
 const goToSell = () => router.push('/write')
 const goToAddPlant = () => router.push('/add-plant')
@@ -320,7 +334,9 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 </script>
 
 <style scoped>
-/* 기존 스타일 유지 */
+.stats-section { padding: 20px; }
+.stats-box { display: flex; justify-content: space-between; background: white; padding: 20px 10px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
 .profile-container { background: linear-gradient(135deg, #f7f6ed 0%, #eef2e6 100%); min-height: 100vh; padding-bottom: 100px; box-sizing: border-box; position: relative; }
 .user-search-bar { position: sticky; top: 0; z-index: 50; background: white; padding: 12px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .search-input-box { display: flex; align-items: center; background: #f0f2f0; border-radius: 8px; padding: 8px 12px; }
@@ -345,19 +361,13 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .stars { display: flex; gap: 2px; }
 .star { font-size: 16px; opacity: 0.3; } .star.filled { opacity: 1; }
 .rating-text { font-size: 12px; color: #666; }
-
 .action-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
 .chat-btn, .follow-btn, .edit-btn { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.3s; }
 .chat-btn { background: white; color: #568265; border: 2px solid #568265; }
 .edit-btn { background: #f8f9fa; color: #2c3e50; border: 2px solid #e0e0e0; }
-
-/* 팔로우 버튼 스타일 */
 .follow-btn { background: linear-gradient(135deg, #568265, #4a7058); color: white; }
 .follow-btn.following { background: white; color: #333; border: 1px solid #ddd; box-shadow: none; }
 
-/* [수정] 통계 박스 */
-.stats-section { padding: 20px; }
-.stats-box { display: flex; justify-content: space-between; background: white; padding: 20px 10px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .stat-item { text-align: center; cursor: pointer; flex: 1; }
 .stat-item strong { font-size: 18px; color: #568265; display: block; }
 .stat-item p { font-size: 11px; color: #666; margin: 0; }
@@ -413,7 +423,6 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .photo-item:hover .photo-overlay { opacity: 1; }
 .photo-stats { display: flex; gap: 12px; color: white; font-size: 12px; font-weight: 600; }
 
-/* 팔로우 모달 */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal-content { background: white; padding: 24px; border-radius: 16px; width: 80%; max-width: 320px; text-align: center; }
 .follow-modal { height: 50vh; display: flex; flex-direction: column; }
