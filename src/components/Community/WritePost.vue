@@ -112,7 +112,7 @@
 
 <script>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter, useRoute } from 'vue-router' // [수정 1] useRoute 추가
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '../../utils/supabase'
 
 export default {
@@ -120,8 +120,8 @@ export default {
 
   setup() {
     const router = useRouter()
-    const route = useRoute() // [수정 2] setup() 안으로 이동
-    const editPostId = route.query.id // [수정 3] 여기서 ID 확인
+    const route = useRoute()
+    const editPostId = route.query.id
 
     const fileInput = ref(null)
     const uploading = ref(false)
@@ -297,7 +297,7 @@ export default {
         }
 
         if (editPostId) {
-          // [수정] ID가 있으면 업데이트
+          // ID가 있으면 업데이트
           const { error } = await supabase
             .from('posts')
             .update(postData)
@@ -306,7 +306,7 @@ export default {
           if (error) throw error
           alert('수정되었습니다.')
         } else {
-          // [신규] ID가 없으면 새로 등록
+          // ID가 없으면 새로 등록
           const { error } = await supabase
             .from('posts')
             .insert([postData])

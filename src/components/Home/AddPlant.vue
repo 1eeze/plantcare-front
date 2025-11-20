@@ -363,7 +363,7 @@ const savePlant = async () => {
     if (insertError) throw insertError
 
     alert('식물이 성공적으로 등록되었습니다! 🌱')
-    router.push({ name: 'Home', query: { refresh: Date.now() } })
+    router.push({ name: 'HomePage', query: { refresh: Date.now() } })
   } catch (error) {
     console.error('저장 실패:', error)
     alert(`저장 중 오류가 발생했습니다.\n${error?.message ?? ''}`)

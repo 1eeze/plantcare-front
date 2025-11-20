@@ -144,7 +144,6 @@ export default {
       this.$emit('close')
     },
 
-    // [핵심] 댓글 불러오기 및 계층 구조 만들기
     async loadComments() {
       try {
         const { data, error } = await supabase
@@ -195,7 +194,7 @@ export default {
       }
     },
 
-    // [핵심] 댓글/대댓글 작성
+    // 댓글/대댓글 작성
     async submitComment() {
       if (!this.newComment.trim()) return
       if (!this.currentUser) {
@@ -276,7 +275,6 @@ export default {
       return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
     },
 
-    // UI 헬퍼 함수들 (이전과 동일 유지)
     focusInput() { /* 템플릿에서 직접 처리하거나 유지 */ },
     adjustTextareaHeight(e) {
       const el = e.target
@@ -299,7 +297,6 @@ export default {
 </script>
 
 <style scoped>
-/* 기존 스타일 유지 + 대댓글 스타일 추가 */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 3000; backdrop-filter: blur(2px); display: flex; align-items: flex-end; justify-content: center; }
 .comment-modal { width: 100%; max-width: 500px; height: 80vh; background: white; border-top-left-radius: 24px; border-top-right-radius: 24px; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -4px 20px rgba(0,0,0,0.2); }
 .modal-handle { width: 40px; height: 4px; background: #e0e0e0; border-radius: 2px; margin: 12px auto; flex-shrink: 0; }

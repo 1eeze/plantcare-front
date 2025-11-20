@@ -88,14 +88,12 @@ const showCommentModal = ref(false)
 
 const isOwner = computed(() => currentUser.value && post.value && currentUser.value.id === post.value.user_id)
 
-// [추가] 댓글 작성 시 숫자 증가
 const onCommentAdded = () => {
   if (post.value) {
     post.value.comments = (post.value.comments || 0) + 1
   }
 }
 
-// [추가] 댓글 삭제 시 숫자 감소
 const onCommentDeleted = () => {
   if (post.value && post.value.comments > 0) {
     post.value.comments--
@@ -127,7 +125,6 @@ const fetchPost = async () => {
     const { data: markData } = await supabase.from('bookmarks').select('user_id').eq('user_id', user.id).eq('post_id', postId).single()
     isBookmarked.value = !!markData
 
-    // 조회수 증가
     if (user.id !== post.value.user_id) {
       await supabase.rpc('increment_view', { row_id: postId }).catch(async () => {
           await supabase.from('posts').update({ views: (post.value.views || 0) + 1 }).eq('id', postId)

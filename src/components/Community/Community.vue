@@ -288,8 +288,6 @@ export default {
             const targetIndex = this.posts.findIndex(p => p.id === updatedPost.id)
             
             if (targetIndex !== -1) {
-              // [중요] 기존의 'liked'(내가 눌렀는지 여부) 상태는 유지하고,
-              // 숫자(likes, comments)만 서버에서 온 최신 값으로 갈아끼웁니다.
               const currentPost = this.posts[targetIndex]
               
               this.posts[targetIndex] = {
@@ -340,7 +338,6 @@ export default {
         this.posts = postsData.map(post => ({
           ...post,
           date: this.formatDate(post.created_at),
-          // 내 ID가 likes 테이블에 있을 때만 true (숫자가 1이어도 내가 안 눌렀으면 false)
           liked: myLikedIds.has(post.id),
           bookmarked: myBookmarkedIds.has(post.id),
           // DB 값 그대로 사용 (없으면 0)

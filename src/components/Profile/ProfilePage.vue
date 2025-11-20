@@ -304,7 +304,7 @@ const loadProfile = async () => {
         userStats.value.plantsCount = plantsData.length
     }
 
-    // 4. 북마크 로드 (수정된 버전)
+    // 4. 북마크 로드
     if (targetId === currentUserId.value) {
         const { data: bookmarksData, error } = await supabase
             .from('bookmarks')
@@ -312,13 +312,11 @@ const loadProfile = async () => {
                 post_id,
                 posts:post_id (*) 
             `) 
-            // posts:post_id (*) -> post_id를 이용해서 posts 테이블의 모든(*) 정보를 가져오라는 뜻
             .eq('user_id', currentUserId.value)
             
         if (error) {
             console.error('북마크 로드 에러:', error)
         } else if (bookmarksData) {
-            // 데이터 구조가 { post_id: 1, posts: { title: '...', ... } } 형태로 옴
             bookmarkedPosts.value = bookmarksData
                 .map(b => b.posts) // posts 객체만 추출
                 .filter(post => post !== null) // 삭제된 글 제외
@@ -392,7 +390,7 @@ onMounted(() => {
 const editProfile = () => router.push({ name: 'ProfileEdit' })
 const goToSell = () => router.push('/write')
 const goToAddPlant = () => router.push('/add-plant')
-const goToPost = (id) => { router.push(`/community/post/${id}`) } // [수정] 상세 페이지 이동 경로 수정
+const goToPost = (id) => { router.push(`/community/post/${id}`) }
 const goToPlantDetail = (id) => router.push(`/plant-detail/${id}`)
 const openPhotoModal = (p) => console.log(p)
 const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'

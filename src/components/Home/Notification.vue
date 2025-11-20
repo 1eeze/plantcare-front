@@ -240,7 +240,6 @@ const activeTab = ref('notifications')
 const loadingChats = ref(false)
 let messageSubscription = null 
 
-// --- 검색 관련 (기존 유지) ---
 const isHeaderSearchActive = ref(false)
 const headerSearchKeyword = ref('')
 const headerSearchInput = ref(null)
@@ -275,7 +274,6 @@ const searchUsers = async () => {
   }, 300)
 }
 const startNewChat = (targetUser) => { closeUserSearchModal(); router.push(`/chat/${targetUser.id}`) }
-// ---------------------------
 
 const notifications = ref([]) 
 const chatList = ref([])
@@ -294,7 +292,6 @@ const filteredChatList = computed(() => {
 const notificationCount = computed(() => 0)
 const chatCount = computed(() => chatList.value.reduce((sum, chat) => sum + chat.unreadCount, 0))
 
-// [핵심 수정 1] 목록 로드 및 필터링 강화
 const loadChatList = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -334,7 +331,6 @@ const loadChatList = async () => {
         }
       }
       
-      // 카운트: 나가기 메시지 제외
       if (msg.receiver_id === user.id && !msg.is_read && !msg.content.includes('::SYSTEM_LEAVE::')) {
         conversations[partnerId].unreadCount++
       }
@@ -355,30 +351,20 @@ const loadChatList = async () => {
           if (chat) {
             if (s.custom_name) chat.name = s.custom_name
             chat.isMuted = s.is_muted
-            chat.isHidden = s.is_hidden // DB 설정값 반영
+            chat.isHidden = s.is_hidden 
           }
         })
       }
     }
 
     const visibleChats = []
-    Object.values(conversations).forEach(chat => {
-        // [2차 방어선] 
-        // 1. DB에서 숨김 처리된 방 제외
-        // 2. OR 마지막 메시지가 '나가기'인데 내가 보낸 게 아니면(상대방이 나감), 
-        //    그리고 내가 읽지 않은 일반 메시지가 없다면(unreadCount=0) -> 숨김 처리로 간주
-        
+    Object.values(conversations).forEach(chat => {        
         const isSystemLeave = chat.lastMessage.text.includes('::SYSTEM_LEAVE::')
         const isMyLeave = chat.lastMessage.isOwn
         
-        // "상대방이 나갔고(isSystemLeave && !isMyLeave), 내가 숨겨뒀던 방(chat.isHidden)"이라면 보여주지 않음
-        // 하지만 chat.isHidden이 false로 잘못 왔을 때를 대비해,
-        // "상대가 나갔는데 내가 안 읽은 메시지도 0개라면" 굳이 다시 보여주지 않음.
-        
-        if (chat.isHidden) return // DB설정이 숨김이면 무조건 패스
+        if (chat.isHidden) return
 
         if (isSystemLeave && !isMyLeave && chat.unreadCount === 0) {
-           // 상대방이 나갔고, 나한테 온 새 메시지도 없다면 -> 이 방은 무시 (목록에 안 띄움)
            return
         }
 
@@ -395,7 +381,7 @@ const loadChatList = async () => {
   }
 }
 
-// [수정 2] 실시간 감지 필터링
+// 실시간 감지 필터링
 const subscribeToMessageChanges = () => {
   if (!currentUser.value) return
   if (messageSubscription) supabase.removeChannel(messageSubscription)
@@ -411,7 +397,6 @@ const subscribeToMessageChanges = () => {
         const myId = currentUser.value.id
         const msg = newMsg || oldMsg 
         
-        // 1. 내용이 '::SYSTEM_LEAVE::'를 포함하면 무조건 무시 (목록 갱신 X)
         if (msg?.content?.includes('::SYSTEM_LEAVE::')) {
             return 
         }
@@ -493,7 +478,6 @@ const formatPrice = (p) => p.toLocaleString() + '원'
 .message-avatar { position: relative; flex-shrink: 0; }
 .user-avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 2px solid #f0f0f0; }
 
-/* 팀원이 추가한 알림 아이콘 색상 스타일 */
 .notification-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; color: white; font-weight: 600; }
 .notification-icon.plant { background: linear-gradient(135deg, #27ae60, #2ecc71); }
 .notification-icon.trade { background: linear-gradient(135deg, #f39c12, #e67e22); }
@@ -535,7 +519,6 @@ const formatPrice = (p) => p.toLocaleString() + '원'
 .pin-btn:hover { background: #f0f0f0; color: #568265; }
 .pin-btn.pinned { color: #f39c12; background: #fff8e7; }
 
-/* --- [내 모달 관련 스타일 추가 (HEAD 내용 복구)] --- */
 .modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.2s ease-out; }
 .modal-content { background: white; width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
@@ -556,7 +539,6 @@ const formatPrice = (p) => p.toLocaleString() + '원'
 @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .loading-spinner.small { width: 24px; height: 24px; border-width: 2px; }
 
-/* 미디어 쿼리는 보통 맨 아래에 둡니다 */
 @media (max-width: 768px) {
   .header { padding: 12px 16px; }
   .header h1 { font-size: 20px; }
