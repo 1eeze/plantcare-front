@@ -162,12 +162,12 @@
   </div>
 
   <!-- 댓글 모달 -->
-  <Comment
-    v-if="showComment"
-    :visible="showComment"
-    :postId="selectedPostId"
-    @close="showComment = false"
-  />
+  <Comment 
+      v-if="showComment"
+      :visible="showComment"
+      :postId="selectedPostId"
+      @close="showComment = false"
+      @comment-added="onCommentAdded"      @comment-deleted="onCommentDeleted"  />
 
   <!-- 채팅 팝업 -->
   <ChatPopup
@@ -186,7 +186,7 @@
 <script>
 import Comment from './Comment.vue'
 import ChatPopup from '../chat/ChatPopup.vue'
-import { supabase } from '../../utils/supabase'
+import { supabase } from '@/utils/supabase'
 
 let zSeed = 10000
 
@@ -207,6 +207,7 @@ export default {
       selectedPostId: null,
       showComment: false,
       openChats: [],
+      currentUser: null,
       
       filters: [
         { key: 'all', label: '전체' },
@@ -216,71 +217,8 @@ export default {
         { key: 'nearby', label: '내 근처' }
       ],
       
-      posts: [
-        {
-          id: 1,
-          profile: 'https://picsum.photos/100?random=10',
-          name: 'PlantLover',
-          userId: 'plantlover123',
-          user_id: 'temp-user-1',
-          verified: true,
-          rating: 4.8,
-          image: 'https://picsum.photos/600?random=10',
-          title: '몬스테라 알보',
-          text: '무늬가 예쁩니다',
-          created_at: new Date().toISOString(),
-          date: 'Sep 1',
-          price: 30000,
-          likes: 43,
-          liked: false,
-          comments: 8,
-          bookmarked: false,
-          status: 'available'
-        },
-        {
-          id: 2,
-          profile: 'https://picsum.photos/100?random=11',
-          name: 'SunshineGreen',
-          userId: 'sunshine_green',
-          user_id: 'temp-user-2',
-          verified: false,
-          rating: 4.2,
-          image: 'https://picsum.photos/600?random=11',
-          title: '알로카시아',
-          text: '잎맥이 선명해서 인테리어에 좋습니다.',
-          created_at: new Date().toISOString(),
-          date: 'Sep 2',
-          price: 50000,
-          likes: 77,
-          liked: true,
-          comments: 5,
-          bookmarked: true,
-          status: 'reserved',
-          tags: ['알로카시아', '아마조니카', '인테리어'],
-          views: 203
-        },
-        {
-          id: 3,
-          profile: 'https://picsum.photos/100?random=12',
-          name: '초록식물마니아',
-          userId: 'green_mania',
-          user_id: 'temp-user-3',
-          verified: true,
-          rating: 4.9,
-          image: 'https://picsum.photos/600?random=12',
-          title: '필로덴드론 핑크 프린세스',
-          text: '핑크색이 정말 예뻐요! 새잎도 계속 나오고 있습니다.',
-          created_at: new Date().toISOString(),
-          date: '2024-09-03',
-          location: '서초구 서초동',
-          price: 120000,
-          likes: 124,
-          liked: false,
-          comments: 5,
-          bookmarked: false,
-          status: 'available'
-        }
-      ]
+      posts: [],
+      realtimeChannel: null // 실시간 채널 변수 추가
     }
   },
 
@@ -292,7 +230,7 @@ export default {
         const query = this.searchQuery.toLowerCase()
         filtered = filtered.filter(post => 
           post.title.toLowerCase().includes(query) ||
-          post.text.toLowerCase().includes(query) ||
+          (post.text && post.text.toLowerCase().includes(query)) ||
           (post.tags && post.tags.some(tag => tag.toLowerCase().includes(query)))
         )
       }
@@ -302,7 +240,7 @@ export default {
       } else if (this.activeFilter === 'popular') {
         filtered = [...filtered].sort((a, b) => b.likes - a.likes)
       } else if (this.activeFilter === 'recent') {
-        filtered = [...filtered].sort((a, b) => new Date(b.created_at || b.date) - new Date(a.created_at || a.date))
+        filtered = [...filtered].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
       }
 
       return filtered
@@ -315,57 +253,177 @@ export default {
     }
   },
 
+  async mounted() {
+    // 1. 유저 정보 먼저 확인
+    const { data: { user } } = await supabase.auth.getUser()
+    this.currentUser = user
+    
+    // 2. 게시글 로드
+    await this.fetchPosts()
+    
+    // 3. 실시간 구독 시작
+    this.setupRealtime()
+  },
+
+  beforeUnmount() {
+    // 컴포넌트 해제 시 구독 취소
+    if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel)
+  },
+
   methods: {
-    goToWritePost() {
-      this.$router.push('/write')
-    },
-    
-    onSearch() {
-      console.log('검색:', this.searchQuery)
-    },
-    
-    clearSearch() {
-      this.searchQuery = ''
-    },
-    
-    setActiveFilter(filter) {
-      this.activeFilter = filter
-    },
-    
-    toggleLike(post) {
-      post.liked = !post.liked
-      post.likes += post.liked ? 1 : -1
-    },
+    setupRealtime() {
+      // 기존 채널이 있다면 제거
+      if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel)
 
-    toggleBookmark(post) {
-      post.bookmarked = !post.bookmarked
-      console.log('북마크:', post.bookmarked)
-    },
+      this.realtimeChannel = supabase
+        .channel('public:posts')
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'posts' },
+          (payload) => {
+            console.log('📢 실시간 업데이트 수신:', payload) // [디버깅용] 콘솔 확인
 
-    goToComments(postId) {
-      this.selectedPostId = postId
-      this.showComment = true
-    },
-
-    goToProfile(userId) {
-      console.log('프로필 이동:', userId)
-    },
-
-    sharePost(post) {
-      console.log('공유:', post.title)
-      if (navigator.share) {
-        navigator.share({
-          title: post.title,
-          text: post.text,
-          url: window.location.href
+            const updatedPost = payload.new
+            // 화면에 있는 게시글 중 업데이트된 글 찾기
+            const targetIndex = this.posts.findIndex(p => p.id === updatedPost.id)
+            
+            if (targetIndex !== -1) {
+              const currentPost = this.posts[targetIndex]
+              
+              this.posts[targetIndex] = {
+                ...currentPost, // 기존 데이터(작성자, 내 좋아요 여부 등) 유지
+                likes: updatedPost.likes,       // 좋아요 수 업데이트
+                comments: updatedPost.comments, // 댓글 수 업데이트
+                views: updatedPost.views        // 조회수 업데이트
+              }
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('📡 Realtime 상태:', status)
         })
+    },
+
+    async fetchPosts() {
+      this.loading = true
+      try {
+        // 1. 게시글 전체 가져오기
+        const { data: postsData, error } = await supabase
+          .from('posts')
+          .select('*')
+          .order('created_at', { ascending: false })
+
+        if (error) throw error
+
+        // 2. 내가 누른 좋아요/북마크 목록 별도로 가져오기
+        let myLikedIds = new Set()
+        let myBookmarkedIds = new Set()
+
+        if (this.currentUser) {
+          const { data: likes } = await supabase
+            .from('likes')
+            .select('post_id')
+            .eq('user_id', this.currentUser.id)
+          
+          const { data: bookmarks } = await supabase
+            .from('bookmarks')
+            .select('post_id')
+            .eq('user_id', this.currentUser.id)
+
+          if (likes) likes.forEach(l => myLikedIds.add(l.post_id))
+          if (bookmarks) bookmarks.forEach(b => myBookmarkedIds.add(b.post_id))
+        }
+
+        // 3. 데이터 병합
+        this.posts = postsData.map(post => ({
+          ...post,
+          date: this.formatDate(post.created_at),
+          liked: myLikedIds.has(post.id),
+          bookmarked: myBookmarkedIds.has(post.id),
+          // DB 값 그대로 사용 (없으면 0)
+          likes: post.likes || 0,
+          comments: post.comments || 0,
+          views: post.views || 0
+        }))
+
+      } catch (e) {
+        console.error('게시글 로드 실패:', e)
+      } finally {
+        this.loading = false
       }
     },
 
+    async toggleLike(post) {
+      if (!this.currentUser) return alert('로그인이 필요합니다.')
+
+      // 화면 먼저 갱신 (Optimistic Update)
+      const previousLiked = post.liked
+      post.liked = !post.liked
+      // 숫자는 Realtime이 처리해주지만, 반응성을 위해 임시로 변경
+      post.likes += post.liked ? 1 : -1
+
+      try {
+        if (previousLiked) {
+            // 취소
+            await supabase.from('likes').delete().eq('user_id', this.currentUser.id).eq('post_id', post.id)
+        } else {
+            // 추가
+            await supabase.from('likes').insert({ user_id: this.currentUser.id, post_id: post.id })
+        }
+      } catch (e) {
+        // 실패 시 롤백
+        post.liked = previousLiked
+        post.likes += post.liked ? 1 : -1
+        console.error('좋아요 오류:', e)
+      }
+    },
+
+    async toggleBookmark(post) {
+      if (!this.currentUser) return alert('로그인이 필요합니다.')
+
+      const previousBookmarked = post.bookmarked
+      post.bookmarked = !post.bookmarked
+
+      try {
+        if (previousBookmarked) {
+            await supabase.from('bookmarks').delete().eq('user_id', this.currentUser.id).eq('post_id', post.id)
+        } else {
+            await supabase.from('bookmarks').insert({ user_id: this.currentUser.id, post_id: post.id })
+            alert('북마크에 저장되었습니다.')
+        }
+      } catch (e) {
+        post.bookmarked = previousBookmarked
+        console.error('북마크 오류:', e)
+      }
+    },
+
+    // 이벤트 핸들러: 내 화면에서 직접 댓글 달았을 때 즉각 반응용
+    onCommentAdded(postId) {
+      // Realtime이 오기 전에 UI 반응성 향상을 위해
+      const post = this.posts.find(p => p.id === postId)
+      if (post) post.comments++
+    },
+    onCommentDeleted(postId) {
+      const post = this.posts.find(p => p.id === postId)
+      if (post && post.comments > 0) post.comments--
+    },
+
+    goToWritePost() { this.$router.push('/write') },
+    onSearch() {},
+    clearSearch() { this.searchQuery = '' },
+    setActiveFilter(filter) { this.activeFilter = filter },
+    goToComments(postId) { this.selectedPostId = postId; this.showComment = true },
+    goToProfile(userId) { this.$router.push(`/profile/${userId}`) },
+    sharePost(post) { if (navigator.share) { navigator.share({ title: post.title, text: post.text, url: window.location.href }) } else { alert('공유 기능이 지원되지 않는 브라우저입니다.') } },
+    
     openChat(post) {
       const chatId = `chat-${post.id}-${Date.now()}`
-      const sellerId = post.userId || post.user_id
+      const sellerId = post.user_id
       
+      if (this.currentUser && sellerId === this.currentUser.id) {
+        return alert('본인이 작성한 게시글입니다.')
+      }
+
       const existingChat = this.openChats.find(c => c.seller_id === sellerId)
       if (existingChat) {
         existingChat.z = zSeed++
@@ -393,37 +451,12 @@ export default {
       }
     },
 
-    buyNow(post) {
-      console.log('바로구매:', post.title)
-      alert(`${post.title} 구매를 진행합니다.`)
-    },
-
-    getStatusText(status) {
-      const statusMap = {
-        'available': '판매중',
-        'reserved': '예약중',
-        'sold': '판매완료'
-      }
-      return statusMap[status] || '판매중'
-    },
-    
-    formatPrice(value) {
-      return new Intl.NumberFormat('ko-KR').format(value) + '원'
-    },
-
+    buyNow(post) { console.log('바로구매:', post.title); alert(`${post.title} 구매를 진행합니다.`) },
+    getStatusText(status) { const statusMap = { 'available': '판매중', 'reserved': '예약중', 'sold': '판매완료' }; return statusMap[status] || '판매중' },
+    formatPrice(value) { return new Intl.NumberFormat('ko-KR').format(value) + '원' },
     formatDate(dateString) {
       if (!dateString) return ''
-      
-      try {
-        const date = new Date(dateString)
-        if (isNaN(date.getTime())) return dateString
-        return date.toLocaleDateString('ko-KR', { 
-          month: 'short', 
-          day: 'numeric' 
-        })
-      } catch {
-        return dateString
-      }
+      try { const date = new Date(dateString); if (isNaN(date.getTime())) return dateString; return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) } catch { return dateString }
     }
   }
 }

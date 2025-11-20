@@ -3,6 +3,19 @@
     <SplashScreen v-if="initialLoading" />
 
     <router-view v-else />
+
+    <div class="global-chat-container">
+      <ChatPopup
+        v-for="chat in chatStore.openChats"
+        :key="chat.id"
+        :title="chat.title"
+        :receiverId="chat.receiverId"
+        :startX="chat.x"
+        :startY="chat.y"
+        :zIndex="chat.zIndex"
+        @close="chatStore.closeChat(chat.receiverId)"
+      />
+    </div>
   </div>
 </template>
 
@@ -11,6 +24,8 @@ import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import SplashScreen from '@/components/common/SplashScreen.vue'
+import ChatPopup from '@/components/chat/ChatPopup.vue'
+import { chatStore } from '@/utils/chatStore'
 
 const initialLoading = ref(true)
 const router = useRouter()
@@ -30,10 +45,9 @@ onMounted(async () => {
     }
   }
 
-  // 스플래시를 잠깐 더 보여주고 싶으면 setTimeout으로 살짝 딜레이도 가능
   setTimeout(() => {
     initialLoading.value = false
-  }, 800) // 0.8초 정도
+  }, 800)
 })
 </script>
 
@@ -105,5 +119,20 @@ body {
 .modal-img {
   width: 340px; max-width: 72vw;
   border-radius: 9px; margin-bottom: 14px;
+}
+
+.global-chat-container {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  z-index: 9999; /* 가장 위에 표시 */
+  pointer-events: none; /* 컨테이너 자체는 클릭 통과 */
+  width: 100%;
+  height: 0;
+}
+
+/* ChatPopup 내부에서 pointer-events: auto로 복구되어 있음 */
+.global-chat-container > * {
+  pointer-events: auto;
 }
 </style>

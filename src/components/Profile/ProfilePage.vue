@@ -60,13 +60,13 @@
           <strong>{{ userStats.plantsCount }}</strong>
           <p>식물</p>
         </div>
-        <div class="stat-item" @click="showSales">
-          <strong>{{ userStats.salesCount }}</strong>
-          <p>판매</p>
-        </div>
         <div class="stat-item" @click="showPosts">
           <strong>{{ userStats.postsCount }}</strong>
           <p>게시글</p>
+        </div>
+        <div class="stat-item" @click="showSales">
+          <strong>{{ userStats.salesCount }}</strong>
+          <p>판매</p>
         </div>
         <div class="stat-item" @click="openFollowModal('followers')">
           <strong>{{ userStats.followersCount }}</strong>
@@ -135,6 +135,28 @@
         </div>
       </div>
 
+      <div v-if="activeTab === 'bookmarks'" class="grid-content">
+        <div v-if="bookmarkedPosts.length === 0" class="empty-state">
+          <div class="empty-icon">🔖</div>
+          <h4>저장된 게시글이 없어요</h4>
+          <p>마음에 드는 식물을 찾아보세요!</p>
+          <button @click="router.push('/community')" class="empty-action-btn">식물 구경가기</button>
+        </div>
+        <div v-else class="post-grid">
+          <div v-for="post in bookmarkedPosts" :key="post.id" class="post-card bookmark-item" @click="goToPost(post.id)">
+            <div class="post-image">
+              <img :src="post.image" :alt="post.title" />
+              <div class="post-status" :class="post.status">{{ getStatusText(post.status) }}</div>
+              <div class="post-price">{{ formatPrice(post.price) }}</div>
+            </div>
+            <div class="post-info">
+              <h4 class="post-title">{{ post.title }}</h4>
+              <p class="post-meta">판매자: {{ post.name }}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div v-if="activeTab === 'photos'" class="grid-content">
         <div v-if="photos.length === 0" class="empty-state">
           <div class="empty-icon">📸</div><h4>업로드된 사진이 없어요</h4>
@@ -146,8 +168,6 @@
         </div>
       </div>
     </div>
-
-    <ChatPopup v-if="showChat" :visible="showChat" :title="chatTitle" :receiverId="chatReceiverId" @close="showChat = false" />
     
     <div v-if="showFollowModal" class="modal-overlay" @click="showFollowModal = false">
       <div class="modal-content follow-modal" @click.stop>
@@ -171,7 +191,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 import profileImageUrl from '../../assets/user-profile.png'
 import plantImg1 from '../../assets/plant.png'
-import ChatPopup from '@/components/chat/ChatPopup.vue'
+import { chatStore } from '@/utils/chatStore' 
 
 const router = useRouter()
 const route = useRoute()
@@ -181,6 +201,7 @@ const defaultProfileImg = profileImageUrl
 const searchKeyword = ref('')
 const searchResults = ref([])
 const isSearching = ref(false)
+
 const searchUsers = async () => {
   if (!searchKeyword.value.trim()) { searchResults.value = []; return }
   isSearching.value = true
@@ -199,9 +220,6 @@ const nickname = ref('')
 const activeTab = ref('selling')
 const isFollowing = ref(false)
 const currentUserId = ref(null)
-const showChat = ref(false)
-const chatReceiverId = ref('')
-const chatTitle = ref('')
 
 // 팔로우 모달
 const showFollowModal = ref(false)
@@ -216,15 +234,19 @@ const isOwnProfile = computed(() => {
 
 const availableTitles = [{ id: 1, name: '새싹 초보', emoji: '🌱' }, { id: 2, name: '그린 러너', emoji: '🏃' }, { id: 3, name: '식물 애호가', emoji: '💚' }, { id: 4, name: '그린 마스터', emoji: '🌿' }, { id: 5, name: '식물 박사', emoji: '🎓' }, { id: 6, name: '정글 메이커', emoji: '🌴' }, { id: 7, name: '플랜테리어 디자이너', emoji: '🪴' }, { id: 8, name: '식물 수집가', emoji: '🏆' }]
 const userProfile = ref({ level: '새싹 초보 🌱', bio: '', location: '', verified: true, rating: 4.8, reviewCount: 124, trustScore: 95, badges: [{ type: 'verified', icon: '✅', text: '본인인증' }, { type: 'seller', icon: '🏆', text: '우수판매자' }, { type: 'expert', icon: '🌿', text: '식물전문가' }] })
-const userStats = ref({ plantsCount: 23, postsCount: 45, salesCount: 32, followersCount: 0, followingCount: 0 })
+const userStats = ref({ plantsCount: 0, postsCount: 0, salesCount: 0, followersCount: 0, followingCount: 0 }) 
+
 const tabs = [
   { key: 'selling', label: '판매중', icon: 'M3 3H5L5.4 5M7 13H17L21 5H5.4M7 13L5.4 5M7 13L4.7 15.3C4.3 15.7 4.6 16.5 5.1 16.5H17M17 13V17C17 18.1 17.9 19 19 19C20.1 19 21 18.1 21 17C21 15.9 20.1 15 19 15C17.9 15 17 15.9 17 17ZM9 19C9 20.1 8.1 21 7 21C5.9 21 5 20.1 5 19C5 17.9 5.9 17 7 17C8.1 17 9 17.9 9 19Z' },
   { key: 'plants', label: '내 식물', icon: 'M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 6V18M6 12H18' },
   { key: 'reviews', label: '후기', icon: 'M11.049 2.927C11.3483 2.00636 12.6517 2.00636 12.951 2.927L14.4699 7.60081C14.6035 8.01284 14.9875 8.29885 15.4207 8.29885H20.4717C21.4329 8.29885 21.8375 9.54193 21.0845 10.1009L17.2637 12.7602C16.9126 13.0257 16.7681 13.4778 16.9018 13.8898L18.4207 18.5636C18.72 19.4843 17.6656 20.2476 16.9126 19.6886L13.0918 17.0293C12.7407 16.7638 12.2593 16.7638 11.9082 17.0293L8.08741 19.6886C7.33445 20.2476 6.28 19.4843 6.57933 18.5636L8.0982 13.8898C8.23193 13.4778 8.08741 13.0257 7.73632 12.7602L3.91553 10.1009C3.16257 9.54193 3.56714 8.29885 4.52832 8.29885H9.57933C10.0125 8.29885 10.3965 8.01284 10.5301 7.60081L11.049 2.927Z' },
+  { key: 'bookmarks', label: '저장됨', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z' },
   { key: 'photos', label: '갤러리', icon: 'M4 16L8.586 11.414C9.367 10.633 10.633 10.633 11.414 11.414L16 16M14 14L15.586 12.414C16.367 11.633 17.633 11.633 18.414 12.414L20 14M14 8H14.01M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z' }
 ]
-const sellingPosts = ref([{ id: 1, title: '몬스테라 알보', image: plantImg1, price: 45000, status: 'available', date: '2024-09-01', views: 156 }])
-const myPlants = ref([{ id: 1, name: '몬스테라', image: plantImg1, health: 'excellent', daysOwned: 142 }])
+
+const bookmarkedPosts = ref([]) 
+const sellingPosts = ref([]) 
+const myPlants = ref([]) 
 const reviews = ref([{ id: 1, reviewerName: 'PlantLover', reviewerAvatar: 'https://picsum.photos/40?random=1', rating: 5, text: '친절해요!', date: '2024-08-20', plantInfo: { name: '몬스테라', image: plantImg1 } }])
 const photos = ref([{ id: 1, url: plantImg1, caption: '새싹', likes: 23, comments: 5 }])
 
@@ -237,6 +259,7 @@ const loadProfile = async () => {
     let targetId = route.params.userId
     if (!targetId || targetId === 'me') targetId = user.id
 
+    // 1. 유저 기본 정보
     const { data, error } = await supabase.from('Users').select('name, avatar_url, bio, location, titleId').eq('id', targetId).single()
     if (error && error.code !== 'PGRST116') throw error
     
@@ -250,13 +273,62 @@ const loadProfile = async () => {
         if(t) userProfile.value.level = `${t.name} ${t.emoji}`
       }
     }
+
+    // 2. 판매글 로드
+    const { data: postsData } = await supabase
+      .from('posts')
+      .select('*')
+      .eq('user_id', targetId)
+      .order('created_at', { ascending: false })
+
+    if (postsData) {
+      sellingPosts.value = postsData.map(post => ({ ...post, date: post.created_at, views: post.views || 0 }))
+      userStats.value.postsCount = postsData.length
+      userStats.value.salesCount = postsData.filter(p => p.status === 'sold').length
+    }
+
+    // 3. 식물 로드
+    const { data: plantsData } = await supabase
+        .from('plants')
+        .select('*')
+        .eq('user_id', targetId)
+    
+    if (plantsData) {
+        myPlants.value = plantsData.map(p => ({
+            id: p.id,
+            name: p.name,
+            image: p.photos?.[0]?.url || plantImg1,
+            health: 'good', 
+            daysOwned: 0    
+        }))
+        userStats.value.plantsCount = plantsData.length
+    }
+
+    // 4. 북마크 로드
+    if (targetId === currentUserId.value) {
+        const { data: bookmarksData, error } = await supabase
+            .from('bookmarks')
+            .select(`
+                post_id,
+                posts:post_id (*) 
+            `) 
+            .eq('user_id', currentUserId.value)
+            
+        if (error) {
+            console.error('북마크 로드 에러:', error)
+        } else if (bookmarksData) {
+            bookmarkedPosts.value = bookmarksData
+                .map(b => b.posts) // posts 객체만 추출
+                .filter(post => post !== null) // 삭제된 글 제외
+        }
+    }
+
     await fetchFollowCounts(targetId)
     if (!isOwnProfile.value) await checkIsFollowing(targetId)
 
   } catch (e) { console.error(e) }
 }
 
-// 팔로우 관련 함수
 const fetchFollowCounts = async (targetId) => {
   const { count: followers } = await supabase.from('Follows').select('*', { count: 'exact', head: true }).eq('following_id', targetId)
   userStats.value.followersCount = followers || 0
@@ -300,19 +372,33 @@ const openFollowModal = async (type) => {
   } catch (e) { console.error(e) }
 }
 
-watch(() => route.params.userId, loadProfile)
-onMounted(loadProfile)
+const startChat = () => {
+  const targetId = route.params.userId
+  const targetName = nickname.value
+  if (!targetId || !targetName || targetId === currentUserId.value) return
+  chatStore.openChat(targetId, targetName)
+}
 
-const startChat = () => { chatReceiverId.value = route.params.userId; chatTitle.value = `${nickname.value}님과의 대화`; showChat.value = true }
+watch(() => route.params.userId, () => {
+  loadProfile()
+})
+
+onMounted(() => {
+  loadProfile()
+})
+
 const editProfile = () => router.push({ name: 'ProfileEdit' })
 const goToSell = () => router.push('/write')
 const goToAddPlant = () => router.push('/add-plant')
-const goToPost = (id) => router.push(`/community/post/${id}`)
-const goToPlantDetail = (id) => router.push(`/plant/${id}`)
+const goToPost = (id) => { router.push(`/community/post/${id}`) }
+const goToPlantDetail = (id) => router.push(`/plant-detail/${id}`)
 const openPhotoModal = (p) => console.log(p)
 const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'
-const formatDate = (d) => new Date(d).toLocaleDateString()
-const getStatusText = (s) => ({ available: '판매중' }[s] || s)
+const formatDate = (d) => {
+    if(!d) return ''
+    return new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+}
+const getStatusText = (s) => ({ available: '판매중', reserved: '예약중', sold: '판매완료' }[s] || s)
 const getHealthIcon = (h) => ({ excellent: '🌟' }[h] || '✅')
 const showPlants = () => activeTab.value = 'plants'
 const showPosts = () => activeTab.value = 'selling'
@@ -320,7 +406,9 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 </script>
 
 <style scoped>
-/* 기존 스타일 유지 */
+.stats-section { padding: 20px; }
+.stats-box { display: flex; justify-content: space-between; background: white; padding: 20px 10px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+
 .profile-container { background: linear-gradient(135deg, #f7f6ed 0%, #eef2e6 100%); min-height: 100vh; padding-bottom: 100px; box-sizing: border-box; position: relative; }
 .user-search-bar { position: sticky; top: 0; z-index: 50; background: white; padding: 12px 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 .search-input-box { display: flex; align-items: center; background: #f0f2f0; border-radius: 8px; padding: 8px 12px; }
@@ -345,19 +433,13 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .stars { display: flex; gap: 2px; }
 .star { font-size: 16px; opacity: 0.3; } .star.filled { opacity: 1; }
 .rating-text { font-size: 12px; color: #666; }
-
 .action-buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 20px; }
 .chat-btn, .follow-btn, .edit-btn { display: flex; align-items: center; gap: 8px; padding: 12px 20px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; transition: all 0.3s; }
 .chat-btn { background: white; color: #568265; border: 2px solid #568265; }
 .edit-btn { background: #f8f9fa; color: #2c3e50; border: 2px solid #e0e0e0; }
-
-/* 팔로우 버튼 스타일 */
 .follow-btn { background: linear-gradient(135deg, #568265, #4a7058); color: white; }
 .follow-btn.following { background: white; color: #333; border: 1px solid #ddd; box-shadow: none; }
 
-/* [수정] 통계 박스 */
-.stats-section { padding: 20px; }
-.stats-box { display: flex; justify-content: space-between; background: white; padding: 20px 10px; border-radius: 16px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 .stat-item { text-align: center; cursor: pointer; flex: 1; }
 .stat-item strong { font-size: 18px; color: #568265; display: block; }
 .stat-item p { font-size: 11px; color: #666; margin: 0; }
@@ -413,7 +495,6 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .photo-item:hover .photo-overlay { opacity: 1; }
 .photo-stats { display: flex; gap: 12px; color: white; font-size: 12px; font-weight: 600; }
 
-/* 팔로우 모달 */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal-content { background: white; padding: 24px; border-radius: 16px; width: 80%; max-width: 320px; text-align: center; }
 .follow-modal { height: 50vh; display: flex; flex-direction: column; }

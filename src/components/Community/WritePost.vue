@@ -112,7 +112,7 @@
 
 <script>
 import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '../../utils/supabase'
 
 export default {
@@ -120,6 +120,9 @@ export default {
 
   setup() {
     const router = useRouter()
+    const route = useRoute()
+    const editPostId = route.query.id
+
     const fileInput = ref(null)
     const uploading = ref(false)
 
@@ -163,19 +166,19 @@ export default {
         if (error) throw error
 
         if (user) {
-          // 프로필 정보 가져오기
+          // profiles 대신 Users 테이블 사용
           const { data: profile, error: profileError } = await supabase
-            .from('profiles')
-            .select('*')
+            .from('Users')
+            .select('name, avatar_url, email')
             .eq('id', user.id)
             .single()
 
           if (!profileError && profile) {
             authorInfo.value = {
               id: user.id,
-              name: profile.username || profile.full_name || user.email,
+              name: profile.name || user.email.split('@')[0], 
               avatar: profile.avatar_url,
-              email: user.email
+              email: profile.email || user.email
             }
           } else {
             authorInfo.value = {
@@ -187,7 +190,6 @@ export default {
         }
       } catch (error) {
         console.error('사용자 정보 가져오기 실패:', error)
-        // 로그인되지 않은 경우 기본 정보 사용
         authorInfo.value = {
           name: '익명',
           avatar: defaultAvatar
@@ -199,7 +201,6 @@ export default {
     const handleImageSelect = (event) => {
       const file = event.target.files[0]
       if (file) {
-        // 파일 크기 검사 (5MB 제한)
         if (file.size > 5 * 1024 * 1024) {
           alert('이미지 크기는 5MB 이하여야 합니다.')
           return
@@ -207,7 +208,6 @@ export default {
 
         formData.value.image = file
 
-        // 미리보기 생성
         const reader = new FileReader()
         reader.onload = (e) => {
           imagePreview.value = e.target.result
@@ -228,7 +228,6 @@ export default {
     // 해시태그 추가
     const addTag = (event) => {
       event.preventDefault()
-
       const tag = tagInput.value.trim().replace(/^#/, '')
 
       if (tag && !formData.value.tags.includes(tag)) {
@@ -246,20 +245,19 @@ export default {
       formData.value.tags.splice(index, 1)
     }
 
-    // 이미지 업로드 to Supabase Storage
+    // 이미지 업로드
     const uploadImage = async (file) => {
       try {
         const fileExt = file.name.split('.').pop()
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
         const filePath = `posts/${fileName}`
 
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from('plant-images')
           .upload(filePath, file)
 
         if (error) throw error
 
-        // Public URL 가져오기
         const { data: { publicUrl } } = supabase.storage
           .from('plant-images')
           .getPublicUrl(filePath)
@@ -271,23 +269,20 @@ export default {
       }
     }
 
-    // 게시물 제출
+    // 게시물 제출 (등록/수정)
     const submitPost = async () => {
-      if (!isValid.value) {
-        alert('모든 필수 항목을 입력해주세요.')
-        return
-      }
-
       uploading.value = true
 
       try {
-        // 1. 이미지 업로드
-        let imageUrl = null
-        if (formData.value.image) {
+        let imageUrl = formData.value.image 
+        // 새 이미지가 업로드된 경우 (File 객체인 경우)
+        if (formData.value.image && typeof formData.value.image !== 'string') {
           imageUrl = await uploadImage(formData.value.image)
+        } else if (imagePreview.value && typeof formData.value.image !== 'object') {
+          // 이미지가 변경되지 않은 경우 기존 URL 유지
+          imageUrl = imagePreview.value
         }
 
-        // 2. 게시물 데이터 준비
         const postData = {
           title: formData.value.title,
           price: formData.value.price,
@@ -298,45 +293,71 @@ export default {
           name: authorInfo.value?.name || '익명',
           profile: authorInfo.value?.avatar || defaultAvatar,
           status: 'available',
-          likes: 0,
-          comments: 0,
-          created_at: new Date().toISOString()
+          updated_at: new Date().toISOString()
         }
 
-        // 3. Supabase에 저장
-        const { data, error } = await supabase
-          .from('posts')
-          .insert([postData])
-          .select()
+        if (editPostId) {
+          // ID가 있으면 업데이트
+          const { error } = await supabase
+            .from('posts')
+            .update(postData)
+            .eq('id', editPostId)
+          
+          if (error) throw error
+          alert('수정되었습니다.')
+        } else {
+          // ID가 없으면 새로 등록
+          const { error } = await supabase
+            .from('posts')
+            .insert([postData])
+          
+          if (error) throw error
+          alert('등록되었습니다.')
+        }
+        
+        router.replace('/community')
 
-        if (error) throw error
-
-        alert('게시물이 성공적으로 등록되었습니다!')
-        router.push('/community')
       } catch (error) {
-        console.error('게시물 저장 실패:', error)
-        alert('게시물 저장에 실패했습니다: ' + error.message)
+        console.error('저장 실패:', error)
+        alert('오류가 발생했습니다: ' + error.message)
       } finally {
         uploading.value = false
       }
     }
 
-    // 뒤로 가기
     const goBack = () => {
       if (confirm('작성 중인 내용이 사라집니다. 뒤로 가시겠습니까?')) {
         router.back()
       }
     }
 
-    // 홈으로 이동
     const goHome = () => {
       if (confirm('작성 중인 내용이 사라집니다. 홈으로 가시겠습니까?')) {
         router.push('/')
       }
     }
 
-    onMounted(() => {
-      fetchUserInfo()
+    onMounted(async () => {
+      await fetchUserInfo()
+      
+      // 수정 모드라면 기존 데이터 불러오기
+      if (editPostId) {
+        const { data, error } = await supabase
+          .from('posts')
+          .select('*')
+          .eq('id', editPostId)
+          .single()
+          
+        if (!error && data) {
+          formData.value.title = data.title
+          formData.value.price = data.price
+          formData.value.text = data.text
+          formData.value.tags = data.tags || []
+          imagePreview.value = data.image 
+          // 수정 시에는 기존 이미지 URL을 formData에 넣어둠 (변경 감지용)
+          formData.value.image = data.image 
+        }
+      }
     })
 
     return {
