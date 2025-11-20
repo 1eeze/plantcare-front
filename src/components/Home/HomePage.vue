@@ -11,6 +11,94 @@
       </div>
     </div>
 
+    <!-- 🆕 분석 결과 모달 추가 -->
+    <div v-if="showPestResult" class="result-overlay" @click="closePestResult">
+      <div class="result-modal" @click.stop>
+        <div class="result-header">
+          <h3>🔬 종합 분석 결과</h3>
+          <button class="close-result-btn" @click="closePestResult">×</button>
+        </div>
+        
+        <div class="result-content">
+          <!-- 병충해 카드 -->
+          <div class="result-card pest-card" @click="togglePestDetail">
+            <div class="card-header">
+              <span class="card-icon">🐛</span>
+              <h4>병충해 감지</h4>
+              <span class="expand-icon">{{ showPestDetail ? '▼' : '▶' }}</span>
+            </div>
+            <div class="card-summary">
+              <p class="pest-name">{{ pestResult?.krName || '감지되지 않음' }}</p>
+              <p v-if="pestResult?.confidence" class="confidence">
+                신뢰도: {{ (pestResult.confidence * 100).toFixed(1) }}%
+              </p>
+            </div>
+            
+            <!-- 상세 정보 (토글) -->
+            <div v-if="showPestDetail" class="card-detail">
+              <p class="detail-label">원본 클래스명</p>
+              <p class="detail-value">{{ pestResult?.className }}</p>
+              
+              <p class="detail-label">대응 방법</p>
+              <p class="detail-value">{{ getPestSolution(pestResult?.className) }}</p>
+            </div>
+          </div>
+
+          <!-- 생육 부위 카드 -->
+          <div class="result-card organ-card" @click="toggleOrganDetail">
+            <div class="card-header">
+              <span class="card-icon">🌿</span>
+              <h4>생육 부위</h4>
+              <span class="expand-icon">{{ showOrganDetail ? '▼' : '▶' }}</span>
+            </div>
+            <div class="card-summary">
+              <p class="organ-name">
+                {{ growthResult?.organ || '감지되지 않음' }}
+              </p>
+              <p v-if="growthResult?.organConfidence" class="confidence">
+                신뢰도: {{ (growthResult.organConfidence * 100).toFixed(1) }}%
+              </p>
+            </div>
+            
+            <div v-if="showOrganDetail && growthResult" class="card-detail">
+              <p class="detail-label">분석 내용</p>
+              <p class="detail-value">
+                해당 부위에 맞는 관리법을 적용하세요.
+              </p>
+            </div>
+          </div>
+
+          <!-- 성장 단계 카드 -->
+          <div class="result-card stage-card" @click="toggleStageDetail">
+            <div class="card-header">
+              <span class="card-icon">🌱</span>
+              <h4>성장 단계</h4>
+              <span class="expand-icon">{{ showStageDetail ? '▼' : '▶' }}</span>
+            </div>
+            <div class="card-summary">
+              <p class="stage-name">
+                {{ growthResult?.stage || '감지되지 않음' }}
+              </p>
+              <p v-if="growthResult?.stageConfidence" class="confidence">
+                신뢰도: {{ (growthResult.stageConfidence * 100).toFixed(1) }}%
+              </p>
+            </div>
+            
+            <div v-if="showStageDetail && growthResult" class="card-detail">
+              <p class="detail-label">관리 팁</p>
+              <p class="detail-value">
+                {{ getStageTip(growthResult?.stage) }}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <button class="save-result-btn" @click="saveAnalysisResult">
+            📋 분석 결과 저장
+        </button>
+      </div>
+    </div>
+
     <!-- 사이드 메뉴 오버레이 -->
     <div v-if="showMenu" class="menu-overlay" @click="toggleMenu"></div>
     
@@ -166,7 +254,6 @@
         <button class="camera-choice-cancel" @click="showCameraChoice = false">취소</button>
       </div>
     </div>
-
   </div>
 </template>
 
@@ -177,9 +264,18 @@ import plant_pic from '../../assets/plant.png'
 import { useRouter } from 'vue-router'
 
 const router = useRouter()
+
+const PEST_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/pest'
+const GROWTH_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/growth' // TODO: 생육 분석 시 사용
+
 const analyzingPest = ref(false)
 const pestResult = ref(null)
 const pestError = ref('') 
+const growthResult = ref(null)
+const showPestResult = ref(false)
+const showPestDetail = ref(false)
+const showOrganDetail = ref(false)
+const showStageDetail = ref(false)
 
 // --- [핵심 수정] 닉네임 기본값 설정 ---
 const userName = ref('식물집사') // 기본값
@@ -227,68 +323,448 @@ const loadUserNickname = async () => {
   }
 }
 
-const PEST_DICTIONARY = {
-  "Spodoptera_litura_egg": {
-    kr_name: "담배거세나방 알",
-    description: "잎 뒷면에 무더기로 산란하며, 부화한 유충이 잎을 갉아먹습니다."
-  },
-  "Helicoverpa_armigera_larva": {
-    kr_name: "담배나방 애벌레 (면화다래나방)",
-    description: "담배, 목화, 토마토 등 다양한 작물의 잎과 열매를 갉아먹는 심각한 해충입니다."
-  },
-  "default": {
-    kr_name: "알 수 없는 병충해",
-    description: "데이터베이스에 등록되지 않은 정보입니다."
-  }
-}
+// 1. 병충해 번역 사전 
+const PEST_DICT = { 
 
+  // 1. 거세미나방 (Black Cutworm) 
+  "agrotis_ipsilon_egg": "거세미나방 알", 
+  "agrotis_ipsilon_larva": "거세미나방 유충 (애벌레)", 
+  "agrotis_ipsilon_adult": "거세미나방 성충", 
+
+  // 2. 꽃노랑총채벌레 (Western Flower Thrips) 
+  "Frankliniella_occidentalis_egg": "꽃노랑총채벌레 알", 
+  "Frankliniella_occidentalis_larva": "꽃노랑총채벌레 유충", 
+  "Frankliniella_occidentalis_adult": "꽃노랑총채벌레 성충", 
+  
+  // 3. 담배가루이 (Sweetpotato Whitefly) 
+  "Bemisia_tabaci_egg": "담배가루이 알", 
+  "Bemisia_tabaci_larva": "담배가루이 유충", 
+  "Bemisia_tabaci_adult": "담배가루이 성충", 
+  
+  // 4. 담배거세나방 (Tobacco Cutworm) 
+  "Spodoptera_litura_egg": "담배거세나방 알", 
+  "Spodoptera_litura_larva": "담배거세나방 유충", 
+  "Spodoptera_litura_adult": "담배거세나방 성충", 
+  
+  // 5. 왕담배나방 (Cotton Bollworm) 
+  "Helicoverpa_armigera_egg": "왕담배나방 알", 
+  "Helicoverpa_armigera_larva": "왕담배나방 유충", 
+  "Helicoverpa_armigera_adult": "왕담배나방 성충", 
+  
+  // 6. 도둑나방 (Cabbage Moth) 
+  "Mamestra_brassicae_egg": "도둑나방 알", 
+  "Mamestra_brassicae_larva": "도둑나방 유충", 
+  "Mamestra_brassicae_adult": "도둑나방 성충", 
+  
+  // 7. 먹노린재 (Black Rice Bug) 
+  "Scotinophara_lurida_egg": "먹노린재 알", 
+  "Scotinophara_lurida_larva": "먹노린재 유충", 
+  "Scotinophara_lurida_adult": "먹노린재 성충", 
+  
+  // 8. 목화바둑명나방 (Cotton Caterpillar) 
+  "Palpita_indica_egg": "목화바둑명나방 알", 
+  "Palpita_indica_larva": "목화바둑명나방 유충", 
+  "Palpita_indica_adult": "목화바둑명나방 성충", 
+  
+  // 9. 무잎벌 (Turnip Sawfly) 
+  "Athalia_rosae_egg": "무잎벌 알", 
+  "Athalia_rosae_larva": "무잎벌 유충", 
+  "Athalia_rosae_adult": "무잎벌 성충", 
+  
+  // 10. 배추좀나방 (Diamondback Moth) 
+  "Plutella_xylostella_egg": "배추좀나방 알", 
+  "Plutella_xylostella_larva": "배추좀나방 유충", 
+  "Plutella_xylostella_adult": "배추좀나방 성충", 
+  
+  // 11. 배추흰나비 (Small White Butterfly) 
+  "Pieris_rapae_egg": "배추흰나비 알", 
+  "Pieris_rapae_larva": "배추흰나비 유충 (청벌레)", 
+  "Pieris_rapae_adult": "배추흰나비 성충", 
+  
+  // 12. 벼룩잎벌레 (Striped Flea Beetle) 
+  "Phyllotreta_striolata_egg": "벼룩잎벌레 알", 
+  "Phyllotreta_striolata_larva": "벼룩잎벌레 유충", 
+  "Phyllotreta_striolata_adult": "벼룩잎벌레 성충", 
+  
+  // 13. 복숭아혹진딧물 (Green Peach Aphid) 
+  "Myzus_persicae_egg": "복숭아혹진딧물 알", 
+  "Myzus_persicae_larva": "복숭아혹진딧물 유충", 
+  "Myzus_persicae_adult": "복숭아혹진딧물 성충", 
+  
+  // 14. 비단노린재 (Large Shield Bug - typo in dataset 'geblen' -> 'gebleri') 
+  "Eurydema_geblen_egg": "비단노린재 알", 
+  "Eurydema_geblen_larva": "비단노린재 유충", 
+  "Eurydema_geblen_adult": "비단노린재 성충", 
+  
+  // 15. 썩덩나무노린재 (Brown Marmorated Stink Bug) 
+  "Halyomorpha_halys_egg": "썩덩나무노린재 알", 
+  "Halyomorpha_halys_larva": "썩덩나무노린재 유충", 
+  "Halyomorpha_halys_adult": "썩덩나무노린재 성충", 
+  
+  // 16. 알락수염노린재 (Sloe Bug) 
+  "Dolycoris_baccarum_egg": "알락수염노린재 알", 
+  "Dolycoris_baccarum_larva": "알락수염노린재 유충", 
+  "Dolycoris_baccarum_adult": "알락수염노린재 성충", 
+  
+  // 17. 열대거세미나방 (Fall Armyworm) 
+  "Spodoptera_frugiperda_egg": "열대거세미나방 알", 
+  "Spodoptera_frugiperda_larva": "열대거세미나방 유충", 
+  "Spodoptera_frugiperda_adult": "열대거세미나방 성충", 
+  
+  // 18. 이십팔점박이무당벌레 (28-spotted Ladybird) 
+  "Henosepilachna_vigintioctopunctata_egg": "이십팔점박이무당벌레 알", 
+  "Henosepilachna_vigintioctopunctata_larva": "이십팔점박이무당벌레 유충", 
+  "Henosepilachna_vigintioctopunctata_adult": "이십팔점박이무당벌레 성충", 
+  
+  // 19. 톱다리개미허리노린재 (Bean Bug) 
+  "Riptortus_pedestris_egg": "톱다리개미허리노린재 알", 
+  "Riptortus_pedestris_larva": "톱다리개미허리노린재 유충", 
+  "Riptortus_pedestris_adult": "톱다리개미허리노린재 성충", 
+  
+  // 20. 파밤나방 (Beet Armyworm) 
+  "Spodoptera_exigua_egg": "파밤나방 알", 
+  "Spodoptera_exigua_larva": "파밤나방 유충", 
+  "Spodoptera_exigua_adult": "파밤나방 성충", 
+  
+  "default": "알 수 없는 병충해" 
+}; 
+
+// 2. 생육 부위(Organ) 번역 사전 
+const ORGAN_DICT = { 
+  "fruit": "열매", 
+  "flower": "꽃", 
+  "leaf": "잎", 
+  "stem": "줄기" 
+}; 
+
+// 3. 성장 단계(Stage) 번역 사전 
+const STAGE_DICT = { 
+  "seedling": "파종기 (새싹)", 
+  "growing": "성장기 (영양생장)", 
+  "flowering/fruiting": "개화/결실기" 
+};
+
+// 병충해 방제 솔루션 매핑
+const PEST_SOLUTION = {
+
+  // 1. 거세미나방 (Black Cutworm)
+  "agrotis_ipsilon_egg": "알 발견 시 즉시 제거하고 주변 토양을 건조하게 유지하세요.",
+  "agrotis_ipsilon_larva": "유충은 즉시 제거하고, BT제나 친환경 살충제를 주기적으로 사용하세요.",
+  "agrotis_ipsilon_adult": "빛 유인을 줄이고, 성페로몬 트랩을 설치하면 효과적입니다.",
+
+  // 2. 꽃노랑총채벌레 (Western Flower Thrips)
+  "Frankliniella_occidentalis_egg": "알이 붙은 잎은 제거하고 폐기하세요.",
+  "Frankliniella_occidentalis_larva": "끈끈이 트랩을 설치하고, 저독성 살충제를 3일 간격으로 살포하세요.",
+  "Frankliniella_occidentalis_adult": "실내 환기 유지, 노란색 끈끈이 트랩 활용이 효과적입니다.",
+
+  // 3. 담배가루이 (Sweetpotato Whitefly)
+  "Bemisia_tabaci_egg": "잎 뒷면을 체크해 알을 물로 씻어내거나 제거하세요.",
+  "Bemisia_tabaci_larva": "식물 비누(난충비누)나 유황계 친환경 약제를 뿌리면 도움됩니다.",
+  "Bemisia_tabaci_adult": "은박지 반사판, 황색 끈끈이, 환기 개선이 효과적입니다.",
+
+  // 4. 담배거세나방 (Tobacco Cutworm)
+  "Spodoptera_litura_egg": "알 덩어리를 발견하면 즉시 제거하세요.",
+  "Spodoptera_litura_larva": "BT제 살포, 손 제거, 야간 점검이 효과적입니다.",
+  "Spodoptera_litura_adult": "성페로몬 트랩을 설치하여 산란을 억제하세요.",
+
+  // 5. 왕담배나방 (Cotton Bollworm)
+  "Helicoverpa_armigera_egg": "잎 뒷면의 알은 바로 제거하세요.",
+  "Helicoverpa_armigera_larva": "어릴 때 BT제 살포가 가장 효과 높습니다.",
+  "Helicoverpa_armigera_adult": "유인등 줄이고, 페로몬 트랩으로 성충을 포획하세요.",
+
+  // 6. 도둑나방 (Cabbage Moth)
+  "Mamestra_brassicae_egg": "알 무더기는 제거 후 폐기하세요.",
+  "Mamestra_brassicae_larva": "유충은 핀셋으로 제거하거나 BT제를 살포하세요.",
+  "Mamestra_brassicae_adult": "성충 출몰 감소를 위해 주변 잡초 제거 필요.",
+
+  // 7. 먹노린재 (Black Rice Bug)
+  "Scotinophara_lurida_egg": "알은 긁어서 제거하세요.",
+  "Scotinophara_lurida_larva": "유충은 물로 씻어내거나 손 제거가 효과적입니다.",
+  "Scotinophara_lurida_adult": "나무젓가락으로 쉽게 잡기 가능하며, 발생이 많으면 피레스로이드계 약제를 고려하세요.",
+
+  // 8. 목화바둑명나방 (Cotton Caterpillar)
+  "Palpita_indica_egg": "알 무더기는 즉시 제거하세요.",
+  "Palpita_indica_larva": "유충 발견 즉시 제거 또는 BT제 살포.",
+  "Palpita_indica_adult": "페로몬 트랩으로 산란 억제 가능.",
+
+  // 9. 무잎벌 (Turnip Sawfly)
+  "Athalia_rosae_egg": "잎 표면에 알이 붙으면 바로 제거하세요.",
+  "Athalia_rosae_larva": "유충은 손 제거가 효과적이며, 심한 경우 저독성 살충제 사용.",
+  "Athalia_rosae_adult": "잡초 제거로 성충 서식지 줄이는 것이 가장 좋습니다.",
+
+  // 10. 배추좀나방 (Diamondback Moth)
+  "Plutella_xylostella_egg": "알이 붙은 잎은 잘라 제거하세요.",
+  "Plutella_xylostella_larva": "BT제가 매우 효과적이며, 5~7일 간격으로 살포하세요.",
+  "Plutella_xylostella_adult": "성충은 페로몬 트랩으로 유인 포획 가능합니다.",
+
+  // 11. 배추흰나비 (Small White Butterfly)
+  "Pieris_rapae_egg": "노란 알은 즉시 제거하세요.",
+  "Pieris_rapae_larva": "어린 애벌레는 손 제거, 심하면 BT제 사용.",
+  "Pieris_rapae_adult": "망사(차광망)로 날아드는 것을 물리적으로 차단하세요.",
+
+  // 12. 벼룩잎벌레 (Striped Flea Beetle)
+  "Phyllotreta_striolata_egg": "알 부착 잎 제거.",
+  "Phyllotreta_striolata_larva": "유충은 잎을 갉아먹기 전 제거가 최선입니다.",
+  "Phyllotreta_striolata_adult": "점프형 성충 → 황색 끈끈이 트랩이 매우 잘 잡힘.",
+
+  // 13. 복숭아혹진딧물 (Green Peach Aphid)
+  "Myzus_persicae_egg": "알은 휴지로 닦아 제거하세요.",
+  "Myzus_persicae_larva": "비눗물(난충비누), 식물용 오일제, 물 세척이 효과적.",
+  "Myzus_persicae_adult": "군집 발견 즉시 가지치기 + 난충비누 살포 추천.",
+
+  // 14. 비단노린재 (Large Shield Bug)
+  "Eurydema_geblen_egg": "색깔이 선명한 알은 손으로 제거하세요.",
+  "Eurydema_geblen_larva": "유충은 수채로 씻어내거나 손 제거.",
+  "Eurydema_geblen_adult": "성충은 피레스로이드계 약제나 손제거가 효과적입니다.",
+
+  // 15. 썩덩나무노린재 (Brown Marmorated Stink Bug)
+  "Halyomorpha_halys_egg": "알을 스크레이퍼로 긁어 제거.",
+  "Halyomorpha_halys_larva": "유충은 비눗물로 간단히 제거 가능.",
+  "Halyomorpha_halys_adult": "성충은 강한 냄새 → 진공청소기로 제거하는 방법도 흔함.",
+
+  // 16. 알락수염노린재 (Sloe Bug)
+  "Dolycoris_baccarum_egg": "알은 손톱으로 긁어 제거하세요.",
+  "Dolycoris_baccarum_larva": "유충은 손 제거가 가장 안전합니다.",
+  "Dolycoris_baccarum_adult": "성충은 냄새가 나므로 집게나 비닐 장갑 착용 추천.",
+
+  // 17. 열대거세미나방 (Fall Armyworm)
+  "Spodoptera_frugiperda_egg": "알 덩어리 제거.",
+  "Spodoptera_frugiperda_larva": "BT제 효과 매우 좋음. 조기 발견이 핵심입니다.",
+  "Spodoptera_frugiperda_adult": "성충 트랩으로 산란 억제 가능.",
+
+  // 18. 이십팔점박이무당벌레
+  "Henosepilachna_vigintioctopunctata_egg": "알은 바로 제거하세요.",
+  "Henosepilachna_vigintioctopunctata_larva": "유충은 손으로 쉽게 제거 가능.",
+  "Henosepilachna_vigintioctopunctata_adult": "성충은 잎을 많이 갉으므로 바로 제거해야 합니다.",
+
+  // 19. 톱다리개미허리노린재 (Bean Bug)
+  "Riptortus_pedestris_egg": "알은 제거.",
+  "Riptortus_pedestris_larva": "유충은 물 세척으로 비교적 쉽게 제거됨.",
+  "Riptortus_pedestris_adult": "성충은 잡기 쉽고, 방치 시 번식 빠르므로 즉시 제거 필요.",
+
+  // 20. 파밤나방 (Beet Armyworm)
+  "Spodoptera_exigua_egg": "알 덩어리 제거.",
+  "Spodoptera_exigua_larva": "유충은 BT제 매우 효과적.",
+  "Spodoptera_exigua_adult": "성충 트랩으로 관리.",
+
+  "default": "전문가와 상담 후 적절한 방제법을 선택하세요."
+};
+
+// 병충해 분석 함수
 async function analyzePest(imageFile) {
-  const API_URL = "https://detectbug-740384497388.asia-southeast1.run.app/predict"
-
   const formData = new FormData()
   formData.append("file", imageFile)
 
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(PEST_API_URL, {
       method: 'POST',
       body: formData,
     })
 
     if (!response.ok) {
-      throw new Error(`API 서버 오류: ${response.statusText}`)
+      throw new Error(`병충해 API 서버 오류: ${response.statusText}`)
     }
 
     const data = await response.json()
-    console.log("AI 원본 응답:", data)
+    console.log("🐛 병충해 AI 원본 응답:", data)
 
     if (data.predictions && data.predictions.length > 0) {
       const firstPrediction = data.predictions[0]
-      const englishName = firstPrediction.class_name
+      const className = firstPrediction.class_name
 
-      let pestInfo = PEST_DICTIONARY[englishName]
-      if (!pestInfo) {
-        pestInfo = PEST_DICTIONARY["default"]
-      }
+      const krName = PEST_DICT[className] || PEST_DICT.default
 
       return {
-        kr_name: pestInfo.kr_name,
-        description: pestInfo.description,
+        className,
+        krName,
         confidence: firstPrediction.confidence,
         bbox: firstPrediction.bbox
       }
     } else {
       return {
-        kr_name: "탐지된 병충해 없음",
-        description: "이미지에서 병충해가 발견되지 않았습니다.",
+        className: 'none',
+        krName: "탐지된 병충해 없음",
+        confidence: 0,
+        bbox: null
       }
     }
   } catch (err) {
-    console.error("AI 판별 실패:", err)
+    console.error("❌ 병충해 AI 판별 실패:", err)
     return {
-      kr_name: "판별 오류",
-      description: "AI 서버에 연결 중 오류가 발생했습니다."
+      className: 'error',
+      krName: "판별 오류 (네트워크 확인 필요)",
+      confidence: 0,
+      bbox: null
     }
   }
+}
+
+// 생육 분석 함수
+async function analyzeGrowth(imageFile) {
+  const formData = new FormData()
+  formData.append("file", imageFile)
+
+  try {
+    const response = await fetch(GROWTH_API_URL, {
+      method: 'POST',
+      body: formData,
+    })
+
+    if (!response.ok) {
+      throw new Error(`생육 API 서버 오류: ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log("🌿 생육 분석 원본 응답:", data)
+
+    // 케이스 1: predictions 배열 구조
+    if (data.predictions && data.predictions.length > 0) {
+      const prediction = data.predictions[0]
+      
+      return {
+        organ: ORGAN_DICT[prediction.organ] || prediction.organ,
+        stage: STAGE_DICT[prediction.stage] || prediction.stage,
+        organConfidence: prediction.organ_confidence,
+        stageConfidence: prediction.stage_confidence
+      }
+    }
+    
+    // 케이스 2: 직접 구조
+    if (data.organ && data.stage) {
+      return {
+        organ: ORGAN_DICT[data.organ] || data.organ,
+        stage: STAGE_DICT[data.stage] || data.stage,
+        organConfidence: data.organ_confidence,
+        stageConfidence: data.stage_confidence
+      }
+    }
+    
+    // 탐지 안 됨
+    console.warn("⚠️ 생육 분석 결과 없음")
+    return null
+
+  } catch (err) {
+    console.error("❌ 생육 분석 실패:", err)
+    return null
+  }
+}
+
+const togglePestDetail = () => {
+  showPestDetail.value = !showPestDetail.value
+}
+
+const toggleOrganDetail = () => {
+  showOrganDetail.value = !showOrganDetail.value
+}
+
+const toggleStageDetail = () => {
+  showStageDetail.value = !showStageDetail.value
+}
+
+const getStageTip = (stage) => {
+  const tips = {
+    '파종기 (새싹)': '충분한 수분과 온화한 온도를 유지해주세요.',
+    '성장기 (영양생장)': '비료를 적절히 공급하고 병충해를 예방하세요.',
+    '개화/결실기': '물 관리에 신경쓰고 과습을 피해주세요.'
+  }
+  return tips[stage] || '현재 단계에 맞는 관리를 계속하세요.'
+}
+
+// 병충해별 대응 방법
+const getPestSolution = (className) => {
+  return PEST_SOLUTION[className] || PEST_SOLUTION.default
+}
+
+const openCamera = () => {
+  showCameraChoice.value = true
+}
+
+const takePhoto = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.capture = 'environment'
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    await handleImageFile(file)
+  }
+
+  input.click()
+}
+
+const pickFromGallery = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    await handleImageFile(file)
+  }
+
+  input.click()
+}
+
+const handleImageFile = async (file) => {
+  if (!file) return
+
+  console.log('📸 이미지 선택됨:', file.name, `크기: ${(file.size / 1024).toFixed(1)}KB`)
+
+  showCameraChoice.value = false
+  analyzingPest.value = true
+  pestError.value = ''
+  pestResult.value = null
+  growthResult.value = null
+
+  try {
+    console.log('🚀 API 호출 시작...')
+    
+    // 병렬로 두 API 동시 호출
+    const [pestRes, growthRes] = await Promise.all([
+      analyzePest(file),
+      analyzeGrowth(file)
+    ])
+
+    console.log('✅ API 호출 완료')
+    console.log('🐛 병충해 결과:', pestRes)
+    console.log('🌿 생육 결과:', growthRes)
+
+    pestResult.value = pestRes
+    growthResult.value = growthRes
+
+    // 둘 다 실패했을 때만 에러 표시
+    if (pestRes.className === 'error' && !growthRes) {
+      alert('❌ 분석에 실패했습니다.\n네트워크 연결을 확인하고 다시 시도해주세요.')
+      analyzingPest.value = false
+      return
+    }
+
+    // 성공 시 모달 표시
+    showPestResult.value = true
+
+  } catch (err) {
+    console.error('💥 분석 중 예외 발생:', err)
+    alert('분석 중 오류가 발생했습니다.\n' + err.message)
+  } finally {
+    analyzingPest.value = false
+  }
+}
+
+const closePestResult = () => {
+  showPestResult.value = false
+  showPestDetail.value = false
+  showOrganDetail.value = false
+  showStageDetail.value = false
+  pestResult.value = null
+  growthResult.value = null
+}
+
+// 분석 결과 저장 (나중에 Supabase에 저장 가능)
+const saveAnalysisResult = () => {
+  console.log('분석 결과 저장:', pestResult.value)
+  alert('분석 결과가 저장되었습니다!')
+  closePestResult()
 }
 
 // Supabase Realtime — insert/update/delete 시 자동 새로고침
@@ -532,60 +1008,6 @@ onUnmounted(() => {
 
 const toggleMenu = () => {
   showMenu.value = !showMenu.value
-}
-
-const openCamera = () => {
-  showCameraChoice.value = true
-}
-
-const handleImageFile = async (file) => {
-  if (!file) return
-
-  console.log('이미지 선택됨:', file.name)
-
-  showCameraChoice.value = false
-  analyzingPest.value = true
-  pestError.value = ''
-  pestResult.value = null
-
-  const result = await analyzePest(file)
-
-  pestResult.value = result
-  analyzingPest.value = false
-
-  const confidenceText = result.confidence != null
-    ? `신뢰도: ${(result.confidence * 100).toFixed(1)}%`
-    : ''
-
-  alert(`${result.kr_name}\n${confidenceText}\n\n${result.description}`)
-  console.log('최종 화면 표시용 결과:', result)
-}
-
-const takePhoto = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.capture = 'environment'
-
-  input.onchange = async (e) => {
-    const file = e.target.files[0]
-    await handleImageFile(file)
-  }
-
-  input.click()
-}
-
-const pickFromGallery = () => {
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-
-  input.onchange = async (e) => {
-    const file = e.target.files[0]
-    await handleImageFile(file)
-  }
-
-  input.click()
 }
 
 const openNotifications = () => {
@@ -863,7 +1285,7 @@ const getOverallStatusClass = (plant) => {
   background: rgba(0, 0, 0, 0.35);
   z-index: 999;
   display: flex;
-  align-items: flex-end; /* 바텀 시트 느낌 */
+  align-items: center;
   justify-content: center;
 }
 
@@ -871,22 +1293,22 @@ const getOverallStatusClass = (plant) => {
   width: 100%;
   max-width: 480px;
   background: #ffffff;
-  border-radius: 16px 16px 0 0;
-  padding: 16px 20px 24px;
-  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15);
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .camera-choice-title {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #2c3e50;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   text-align: center;
 }
 
 .camera-choice-btn {
   width: 100%;
-  padding: 12px;
+  padding: 14px;
   margin-bottom: 8px;
   border-radius: 10px;
   border: none;
@@ -895,22 +1317,32 @@ const getOverallStatusClass = (plant) => {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
+  transition: background 0.2s;
+}
+
+.camera-choice-btn:hover {
+  background: #dfe7d6;
 }
 
 .camera-choice-btn:active {
-  background: #dfe7d6;
+  background: #cbd5c0;
 }
 
 .camera-choice-cancel {
   width: 100%;
-  padding: 10px;
+  padding: 12px;
   margin-top: 4px;
   border-radius: 10px;
   border: none;
-  background: #ffffff;
+  background: transparent;
   color: #7f8c8d;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
+  transition: color 0.2s;
+}
+
+.camera-choice-cancel:hover {
+  color: #2c3e50;
 }
 
 /* 식물 카드 스크롤 */
@@ -1231,5 +1663,175 @@ const getOverallStatusClass = (plant) => {
   to {
     transform: rotate(360deg);
   }
+}
+
+.result-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 1001;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.result-modal {
+  background: white;
+  border-radius: 20px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #eee;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 10;
+}
+
+.result-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #2c3e50;
+}
+
+.close-result-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #7f8c8d;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.result-content {
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 분석 카드 공통 스타일 */
+.result-card {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.result-card:hover {
+  background: #eef2e6;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.card-icon {
+  font-size: 20px;
+}
+
+.card-header h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  flex: 1;
+}
+
+.expand-icon {
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
+.card-summary {
+  padding-left: 28px;
+}
+
+.pest-name, .organ-name, .stage-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+}
+
+.confidence {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin: 0;
+}
+
+/* 상세 정보 */
+.card-detail {
+  margin-top: 12px;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  border-left: 3px solid #4a6444;
+}
+
+.detail-label {
+  font-size: 12px;
+  color: #7f8c8d;
+  margin: 8px 0 4px 0;
+  font-weight: 600;
+}
+
+.detail-label:first-child {
+  margin-top: 0;
+}
+
+.detail-value {
+  font-size: 13px;
+  color: #2c3e50;
+  margin: 0 0 8px 0;
+  line-height: 1.5;
+}
+
+/* 카드별 색상 구분 */
+.pest-card {
+  border-left: 4px solid #ff6b6b;
+}
+
+.organ-card {
+  border-left: 4px solid #4ecdc4;
+}
+
+.stage-card {
+  border-left: 4px solid #95e1d3;
+}
+
+/* 저장 버튼 */
+.save-result-btn {
+  margin: 16px;
+  padding: 14px;
+  background: linear-gradient(135deg, #4a6444 0%, #6b856b 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+
+.save-result-btn:hover {
+  transform: translateY(-1px);
+}
+
+.save-result-btn:active {
+  transform: translateY(0);
 }
 </style>
