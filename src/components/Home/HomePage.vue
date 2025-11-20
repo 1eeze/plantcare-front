@@ -203,6 +203,7 @@ const fetchUnreadCount = async () => {
       .select('sender_id')
       .eq('receiver_id', user.id)
       .eq('is_read', false)
+      .neq('content', '::SYSTEM_LEAVE::')
 
     if (error) throw error
     if (!unreadMessages || unreadMessages.length === 0) {
@@ -353,7 +354,81 @@ function tipFromWeather({ temp, humidity, uvi, weatherId, day }) {
 }
 
 async function loadWeather() {
-  // 날씨 로직 (필요시 구현)
+  loadingWeather.value = true
+  try {
+    const coords = await new Promise((resolve) => {
+      if (!navigator.geolocation) {
+        return resolve({ lat: 37.5665, lon: 126.9780 })
+      }
+      navigator.geolocation.getCurrentPosition(
+        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+        () => resolve({ lat: 37.5665, lon: 126.9780 }),
+        { enableHighAccuracy: true, timeout: 5000 }
+      )
+    })
+
+    const key = import.meta.env.VITE_OWM_KEY
+    if (!key) {
+      console.warn('OpenWeather API 키가 설정되지 않았습니다.')
+      weather.value = {
+        temp: 20,
+        description: 'API 키 없음',
+        humidity: 60,
+        uv: '-'
+      }
+      todayTip.value = '날씨 정보를 불러올 수 없어요. 환경 변수를 확인해주세요.'
+      return
+    }
+
+    const url = `https://api.openweathermap.org/data/3.0/onecall?lat=${coords.lat}&lon=${coords.lon}&units=metric&lang=kr&exclude=minutely,hourly,daily,alerts&appid=${key}`
+
+    const res = await fetch(url)
+
+    if (!res.ok) {
+      throw new Error(`API 응답 오류: ${res.status} ${res.statusText}`)
+    }
+
+    const data = await res.json()
+
+    if (!data.current) {
+      console.warn('날씨 데이터 형식이 올바르지 않습니다:', data)
+      weather.value = {
+        temp: 20,
+        description: '데이터 없음',
+        humidity: 60,
+        uv: '-'
+      }
+      todayTip.value = '날씨 정보를 불러올 수 없어요.'
+      return
+    }
+
+    const cur = data.current
+    weather.value = {
+      temp: Math.round(cur.temp ?? 20),
+      description: cur.weather?.[0]?.description ?? '정보 없음',
+      humidity: cur.humidity ?? 0,
+      uv: cur.uvi ?? '-'
+    }
+
+    todayTip.value = tipFromWeather({
+      temp: cur.temp ?? 20,
+      humidity: cur.humidity ?? 60,
+      uvi: cur.uvi ?? 0,
+      weatherId: cur.weather?.[0]?.id ?? 800,
+      day: isDaytime(cur)
+    })
+  } catch (err) {
+    console.error('날씨 불러오기 실패:', err)
+    weather.value = {
+      temp: 20,
+      description: '로딩 실패',
+      humidity: 60,
+      uv: '-'
+    }
+    todayTip.value = '날씨 정보를 불러올 수 없어요.'
+  } finally {
+    loadingWeather.value = false
+  }
 }
 
 const loadPlants = async () => {
@@ -453,7 +528,21 @@ const getOverallStatusClass = (plant) => {
 .menu-items { padding: 20px 0; }
 .menu-item { display: block; padding: 15px 20px; text-decoration: none; color: #333; border-bottom: 1px solid #f5f5f5; transition: background 0.2s; }
 .menu-item:hover { background: #f8f9fa; }
-.header { display: flex; justify-content: space-between; align-items: center; padding: 20px; background: linear-gradient(135deg, #eef2e6 0%, #dfe7d6 100%); backdrop-filter: blur(10px); position: sticky; top: 0; z-index: 10; }
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #eef2e6 0%, #dfe7d6 100%);
+  
+  /* 호환성을 위해 -webkit- 버전 추가 */
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
 .menu-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 8px; }
 .header-actions { display: flex; align-items: center; gap: 12px; }
 .camera-btn { background: none; border: none; padding: 8px; cursor: pointer; border-radius: 8px; transition: background 0.2s; }

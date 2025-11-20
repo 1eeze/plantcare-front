@@ -20,6 +20,7 @@ import ProfileEdit from '@/components/Profile/ProfileEdit.vue'
 import LoginSuccess from '@/components/LoginSuccess.vue'
 import UpdatePassword from '@/components/UpdatePassword.vue'
 import ChatRoom from '@/components/chat/ChatRoom.vue'
+import PostDetail from '@/components/Community/PostDetail.vue'
 
 const routes = [
   {
@@ -64,6 +65,12 @@ const routes = [
         path: 'community', 
         name: 'Community',
         component: Community 
+      },
+      {
+        path: 'community/post/:id',
+        name: 'PostDetail',
+        component: PostDetail,
+        props: true
       },
       { 
         path: 'write', 

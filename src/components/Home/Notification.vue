@@ -231,141 +231,71 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onActivated, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
-
 const activeTab = ref('notifications')
 const loadingChats = ref(false)
 let messageSubscription = null 
 
+// --- 검색 관련 (기존 유지) ---
 const isHeaderSearchActive = ref(false)
 const headerSearchKeyword = ref('')
 const headerSearchInput = ref(null)
-
-const toggleHeaderSearch = () => {
-  isHeaderSearchActive.value = !isHeaderSearchActive.value
-  if (isHeaderSearchActive.value) {
-    nextTick(() => {
-      headerSearchInput.value?.focus()
-    })
-  } else {
-    headerSearchKeyword.value = ''
-  }
-}
-
-const handleHeaderBack = () => {
-  if (isHeaderSearchActive.value) {
-    isHeaderSearchActive.value = false
-    headerSearchKeyword.value = ''
-  } else {
-    router.back()
-  }
-}
-
 const showUserModal = ref(false)
 const userSearchKeyword = ref('')
 const userSearchResults = ref([])
 const isSearchingUsers = ref(false)
 let searchTimeout = null
 
-const openUserSearchModal = () => {
-  showUserModal.value = true
-  userSearchKeyword.value = ''
-  userSearchResults.value = []
+const toggleHeaderSearch = () => {
+  isHeaderSearchActive.value = !isHeaderSearchActive.value
+  if (isHeaderSearchActive.value) nextTick(() => headerSearchInput.value?.focus())
+  else headerSearchKeyword.value = ''
 }
-
-const closeUserSearchModal = () => {
-  showUserModal.value = false
+const handleHeaderBack = () => {
+  if (isHeaderSearchActive.value) { isHeaderSearchActive.value = false; headerSearchKeyword.value = '' }
+  else router.back()
 }
-
+const openUserSearchModal = () => { showUserModal.value = true; userSearchKeyword.value = ''; userSearchResults.value = [] }
+const closeUserSearchModal = () => { showUserModal.value = false }
 const searchUsers = async () => {
   if (searchTimeout) clearTimeout(searchTimeout)
-  if (!userSearchKeyword.value.trim()) {
-    userSearchResults.value = []
-    return
-  }
-
+  if (!userSearchKeyword.value.trim()) { userSearchResults.value = []; return }
   isSearchingUsers.value = true
   searchTimeout = setTimeout(async () => {
     try {
-      const { data, error } = await supabase
-        .from('Users')
-        .select('id, name, avatar_url')
-        .ilike('name', `%${userSearchKeyword.value}%`)
-        .limit(10)
-
+      const { data, error } = await supabase.from('Users').select('id, name, avatar_url').ilike('name', `%${userSearchKeyword.value}%`).limit(10)
       if (error) throw error
-
-      const myId = currentUser.value?.id
-      userSearchResults.value = data.filter(u => u.id !== myId)
-    } catch (e) {
-      console.error('User search failed', e)
-    } finally {
-      isSearchingUsers.value = false
-    }
+      const { data: { user } } = await supabase.auth.getUser()
+      userSearchResults.value = data.filter(u => u.id !== user?.id)
+    } catch (e) { console.error(e) } finally { isSearchingUsers.value = false }
   }, 300)
 }
+const startNewChat = (targetUser) => { closeUserSearchModal(); router.push(`/chat/${targetUser.id}`) }
+// ---------------------------
 
-const startNewChat = (targetUser) => {
-  closeUserSearchModal()
-  router.push(`/chat/${targetUser.id}`)
-}
-
-const notifications = ref([
-  {
-    id: 1,
-    type: 'plant',
-    title: '물주기 시간',
-    message: '몬스테라에게 물을 줄 시간이에요',
-    timestamp: new Date(Date.now() - 30 * 60 * 1000),
-    read: false,
-    metadata: { plantName: '몬스테라' }
-  },
-  {
-    id: 2,
-    type: 'trade',
-    title: '새로운 구매 문의',
-    message: 'PlantLover님이 관심을 보이고 있어요',
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    read: false,
-    metadata: { price: 45000, plantName: '몬스테라 알보' }
-  }
-])
-
+const notifications = ref([]) 
 const chatList = ref([])
 const currentUser = ref(null)
 
-const filteredNotifications = computed(() => {
-  if (!headerSearchKeyword.value) return notifications.value
-  const keyword = headerSearchKeyword.value.toLowerCase()
-  return notifications.value.filter(n => 
-    n.title.toLowerCase().includes(keyword) || 
-    n.message.toLowerCase().includes(keyword) ||
-    (n.metadata?.plantName && n.metadata.plantName.toLowerCase().includes(keyword))
-  )
-})
-
+const filteredNotifications = computed(() => notifications.value)
 const filteredChatList = computed(() => {
   if (!headerSearchKeyword.value) return chatList.value
   const keyword = headerSearchKeyword.value.toLowerCase()
   return chatList.value.filter(c => {
-    // 시스템 메시지 검색 처리
-    const text = c.lastMessage.text === '::SYSTEM_LEAVE::' 
-        ? '상대방이 채팅방을 나갔습니다.' 
-        : c.lastMessage.text
-        
+    const text = c.lastMessage.text.includes('::SYSTEM_LEAVE::') ? '상대방이 채팅방을 나갔습니다.' : c.lastMessage.text
     return c.name.toLowerCase().includes(keyword) || text.toLowerCase().includes(keyword)
   })
 })
 
-const notificationCount = computed(() => notifications.value.filter(n => !n.read).length)
+const notificationCount = computed(() => 0)
 const chatCount = computed(() => chatList.value.reduce((sum, chat) => sum + chat.unreadCount, 0))
 
+// [핵심 수정 1] 목록 로드 및 필터링 강화
 const loadChatList = async () => {
-  loadingChats.value = true
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
@@ -400,11 +330,12 @@ const loadChatList = async () => {
           lastMessageTime: new Date(msg.created_at),
           unreadCount: 0,
           isMuted: false,
-          isHidden: false // 숨김 상태 추가
+          isHidden: false
         }
       }
       
-      if (msg.receiver_id === user.id && !msg.is_read) {
+      // 카운트: 나가기 메시지 제외
+      if (msg.receiver_id === user.id && !msg.is_read && !msg.content.includes('::SYSTEM_LEAVE::')) {
         conversations[partnerId].unreadCount++
       }
     })
@@ -412,49 +343,47 @@ const loadChatList = async () => {
     const validIds = Array.from(partnerIds).filter(id => id !== 'deleted')
     
     if (validIds.length > 0) {
-      const { data: profiles, error: profileError } = await supabase
-        .from('Users')
-        .select('id, name, avatar_url')
-        .in('id', validIds)
-      
-      // [수정] 설정 가져올 때 is_hidden도 포함
-      const { data: settings, error: settingsError } = await supabase
-        .from('chat_settings')
-        .select('partner_id, custom_name, is_muted, is_hidden')
-        .eq('user_id', user.id)
-        .in('partner_id', validIds)
+      const { data: profiles } = await supabase.from('Users').select('id, name, avatar_url').in('id', validIds)
+      const { data: settings } = await supabase.from('chat_settings').select('partner_id, custom_name, is_muted, is_hidden').eq('user_id', user.id).in('partner_id', validIds)
 
-      if (!profileError && profiles) {
-        profiles.forEach(profile => {
-          if (conversations[profile.id]) {
-            conversations[profile.id].name = profile.name
-            conversations[profile.id].avatar = profile.avatar_url
-          }
-        })
+      if (profiles) {
+        profiles.forEach(p => { if (conversations[p.id]) { conversations[p.id].name = p.name; conversations[p.id].avatar = p.avatar_url } })
       }
-
-      if (!settingsError && settings) {
-        settings.forEach(setting => {
-          const chat = conversations[setting.partner_id]
+      if (settings) {
+        settings.forEach(s => {
+          const chat = conversations[s.partner_id]
           if (chat) {
-            if (setting.custom_name) chat.name = setting.custom_name
-            chat.isMuted = setting.is_muted
-            chat.isHidden = setting.is_hidden // 숨김 상태 반영
+            if (s.custom_name) chat.name = s.custom_name
+            chat.isMuted = s.is_muted
+            chat.isHidden = s.is_hidden // DB 설정값 반영
           }
         })
       }
     }
 
-    // [수정] 숨김 처리된 채팅방은 목록에서 제외
     const visibleChats = []
     Object.values(conversations).forEach(chat => {
-        if (chat.name === '로딩 중...') chat.name = '(알 수 없음)'
-        if (chat.isMuted) chat.name += ' 🔕'
+        // [2차 방어선] 
+        // 1. DB에서 숨김 처리된 방 제외
+        // 2. OR 마지막 메시지가 '나가기'인데 내가 보낸 게 아니면(상대방이 나감), 
+        //    그리고 내가 읽지 않은 일반 메시지가 없다면(unreadCount=0) -> 숨김 처리로 간주
         
-        // 숨김이 아니거나, 숨겨졌더라도 새 메시지가 있으면(로직 상 send시 unhide됨) 표시
-        if (!chat.isHidden) {
-            visibleChats.push(chat)
+        const isSystemLeave = chat.lastMessage.text.includes('::SYSTEM_LEAVE::')
+        const isMyLeave = chat.lastMessage.isOwn
+        
+        // "상대방이 나갔고(isSystemLeave && !isMyLeave), 내가 숨겨뒀던 방(chat.isHidden)"이라면 보여주지 않음
+        // 하지만 chat.isHidden이 false로 잘못 왔을 때를 대비해,
+        // "상대가 나갔는데 내가 안 읽은 메시지도 0개라면" 굳이 다시 보여주지 않음.
+        
+        if (chat.isHidden) return // DB설정이 숨김이면 무조건 패스
+
+        if (isSystemLeave && !isMyLeave && chat.unreadCount === 0) {
+           // 상대방이 나갔고, 나한테 온 새 메시지도 없다면 -> 이 방은 무시 (목록에 안 띄움)
+           return
         }
+
+        if (chat.name === '로딩 중...') chat.name = '(알 수 없음)'
+        visibleChats.push(chat)
     })
 
     chatList.value = visibleChats.sort((a, b) => b.lastMessageTime - a.lastMessageTime)
@@ -466,86 +395,60 @@ const loadChatList = async () => {
   }
 }
 
+// [수정 2] 실시간 감지 필터링
 const subscribeToMessageChanges = () => {
   if (!currentUser.value) return
-
   if (messageSubscription) supabase.removeChannel(messageSubscription)
 
   messageSubscription = supabase
-    .channel('public:messages')
+    .channel('public:messages_list_subscription')
     .on(
       'postgres_changes',
-      {
-        event: '*', 
-        schema: 'public',
-        table: 'messages'
-      },
+      { event: '*', schema: 'public', table: 'messages' },
       (payload) => {
         const newMsg = payload.new
         const oldMsg = payload.old
         const myId = currentUser.value.id
+        const msg = newMsg || oldMsg 
+        
+        // 1. 내용이 '::SYSTEM_LEAVE::'를 포함하면 무조건 무시 (목록 갱신 X)
+        if (msg?.content?.includes('::SYSTEM_LEAVE::')) {
+            return 
+        }
 
-        // INSERT, UPDATE, DELETE 모두 내 관련인지 확인
-        const isRelevant = 
-          (newMsg && (newMsg.sender_id === myId || newMsg.receiver_id === myId)) ||
-          (oldMsg && (oldMsg.sender_id === myId || oldMsg.receiver_id === myId))
-
-        if (isRelevant) {
-          loadChatList()
+        if (msg && (msg.sender_id === myId || msg.receiver_id === myId)) {
+            loadChatList()
         }
       }
     )
     .subscribe()
 }
 
+onActivated(() => { loadChatList() })
 onMounted(async () => {
+  loadingChats.value = true
   await loadChatList()
   subscribeToMessageChanges()
 })
-
 onBeforeUnmount(() => {
   if (messageSubscription) supabase.removeChannel(messageSubscription)
 })
 
-const setActiveTab = (tab) => { 
-  activeTab.value = tab 
-  isHeaderSearchActive.value = false
-  headerSearchKeyword.value = ''
-}
-
-const openChat = (chat) => {
-    router.push(`/chat/${chat.id}`)
-}
-
-const handleNotificationClick = (notification) => {
-  notification.read = true
-}
-
-const getNotificationIcon = (type) => {
-  const icons = { plant: '🌱', trade: '💰', social: '❤️', system: '⚙️' }
-  return icons[type] || '📋'
-}
-
+const setActiveTab = (tab) => { activeTab.value = tab; isHeaderSearchActive.value = false; headerSearchKeyword.value = '' }
+const openChat = (chat) => { router.push(`/chat/${chat.id}`) }
+const handleNotificationClick = (n) => { n.read = true }
+const getNotificationIcon = (t) => ({ plant: '🌱', trade: '💰', social: '❤️', system: '⚙️' }[t] || '📋')
 const formatTime = (timestamp) => {
-  const now = new Date()
-  const diff = now - timestamp
-  const minutes = Math.floor(diff / 60000)
-  const hours = Math.floor(diff / 3600000)
-  const days = Math.floor(diff / 86400000)
-
-  if (minutes < 1) return '방금'
-  if (minutes < 60) return `${minutes}분`
-  if (hours < 24) return `${hours}시간`
-  if (days < 7) return `${days}일`
-  
+  const now = new Date(); const diff = now - timestamp
+  if (diff < 60000) return '방금'
+  if (diff < 3600000) return `${Math.floor(diff/60000)}분 전`
+  if (diff < 86400000) return `${Math.floor(diff/3600000)}시간 전`
   return timestamp.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
-
-const formatPrice = (price) => new Intl.NumberFormat('ko-KR').format(price) + '원'
+const formatPrice = (p) => p.toLocaleString() + '원'
 </script>
 
 <style scoped>
-/* 기존 스타일 그대로 유지 */
 .messages-container { background: linear-gradient(135deg, #f7f6ed 0%, #eef2e6 100%); min-height: 100vh; display: flex; flex-direction: column; }
 .header { background: white; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); position: sticky; top: 0; z-index: 50; height: 72px; box-sizing: border-box; }
 .header-search-input { border: none; background: #f8f9fa; padding: 8px 12px; border-radius: 8px; font-size: 16px; width: 100%; color: #2c3e50; outline: none; margin-left: 8px; }
@@ -553,6 +456,107 @@ const formatPrice = (price) => new Intl.NumberFormat('ko-KR').format(price) + '�
 .floating-action-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 24px rgba(86, 130, 101, 0.5); }
 .floating-action-btn:active { transform: translateY(0) scale(1); }
 
+.header-left { display: flex; align-items: center; gap: 16px; }
+
+.back-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; background: none; border: none; border-radius: 50%; cursor: pointer; color: #2c3e50; transition: all 0.2s ease; }
+.back-btn:hover { background: #f8f9fa; }
+
+.header h1 { margin: 0; font-size: 18px; font-weight: 600; color: #2c3e50; line-height: 1; display: flex; align-items: center; }
+.header-actions { display: flex; align-items: center; gap: 8px; }
+
+.search-btn, .compose-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; background: none; border: none; border-radius: 50%; cursor: pointer; color: #666; transition: all 0.2s ease; }
+.search-btn:hover, .compose-btn:hover { background: #f8f9fa; color: #568265; }
+
+.tab-container { background: white; padding: 16px 20px; border-bottom: 1px solid #f0f0f0; }
+.tab-wrapper { position: relative; background: #f8f9fa; border-radius: 25px; padding: 4px; display: flex; max-width: 400px; margin: 0 auto; }
+.tab-slider { position: absolute; top: 4px; bottom: 4px; width: calc(50% - 4px); background: linear-gradient(135deg, #568265, #4a7058); border-radius: 21px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(86, 130, 101, 0.3); }
+.tab-btn { flex: 1; background: none; border: none; cursor: pointer; padding: 12px 16px; border-radius: 21px; transition: all 0.3s ease; position: relative; z-index: 2; }
+.tab-content { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: #666; transition: color 0.3s ease; }
+.tab-btn.active .tab-content { color: white; }
+.count-badge { background: #e74c3c; color: white; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; margin-left: 4px; }
+.tab-btn.active .count-badge { background: rgba(255, 255, 255, 0.3); }
+
+.content-area { flex: 1; background: white; overflow: hidden; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; text-align: center; }
+.empty-illustration { margin-bottom: 24px; opacity: 0.6; }
+.empty-state h3 { font-size: 20px; color: #2c3e50; margin: 0 0 12px 0; font-weight: 600; }
+.empty-state p { font-size: 16px; color: #666; margin: 0 0 32px 0; line-height: 1.5; }
+
+.start-chat-btn { padding: 14px 28px; background: linear-gradient(135deg, #568265, #4a7058); color: white; border: none; border-radius: 25px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(86, 130, 101, 0.3); }
+.start-chat-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(86, 130, 101, 0.4); }
+
+.message-list { padding: 0; }
+.message-item { display: flex; align-items: flex-start; gap: 16px; padding: 20px; border-bottom: 1px solid #f8f9fa; cursor: pointer; transition: all 0.2s ease; position: relative; }
+.message-item:hover { background: #f8f9fa; }
+.message-item.unread { background: linear-gradient(90deg, rgba(86, 130, 101, 0.05), transparent); }
+.message-item.unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(135deg, #568265, #4a7058); }
+.message-avatar { position: relative; flex-shrink: 0; }
+.user-avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 2px solid #f0f0f0; }
+
+/* 팀원이 추가한 알림 아이콘 색상 스타일 */
+.notification-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; color: white; font-weight: 600; }
+.notification-icon.plant { background: linear-gradient(135deg, #27ae60, #2ecc71); }
+.notification-icon.trade { background: linear-gradient(135deg, #f39c12, #e67e22); }
+.notification-icon.social { background: linear-gradient(135deg, #e74c3c, #c0392b); }
+.notification-icon.system { background: linear-gradient(135deg, #9b59b6, #8e44ad); }
+
+.unread-indicator { position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; background: #e74c3c; border-radius: 50%; border: 3px solid white; }
+.online-indicator { position: absolute; bottom: 4px; right: 4px; width: 14px; height: 14px; background: #27ae60; border-radius: 50%; border: 3px solid white; }
+.unread-count { position: absolute; top: -6px; right: -6px; background: #e74c3c; color: white; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 12px; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: 2px solid white; }
+
+.message-content { flex: 1; min-width: 0; }
+.message-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 12px; }
+.message-title { font-size: 17px; font-weight: 600; color: #2c3e50; margin: 0; line-height: 1.3; }
+.message-time { font-size: 13px; color: #999; white-space: nowrap; flex-shrink: 0; }
+.message-preview {
+  font-size: 15px;
+  color: #666;
+  line-height: 1.4;
+  margin: 0 0 8px 0;
+  
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  
+  line-clamp: 2; 
+  
+  overflow: hidden;
+}
+.own-message { color: #568265; font-weight: 500; }
+.message-tags { display: flex; gap: 8px; flex-wrap: wrap; }
+.tag { font-size: 11px; font-weight: 600; padding: 4px 8px; border-radius: 12px; }
+.price-tag { background: #e8f5e8; color: #27ae60; }
+.plant-tag { background: #f0f8f4; color: #568265; }
+.trade-tag { background: #fff3e0; color: #f57c00; }
+
+.message-actions { display: flex; flex-direction: column; gap: 8px; opacity: 0; transition: opacity 0.2s ease; }
+.message-item:hover .message-actions { opacity: 1; }
+.pin-btn { display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; background: none; border: none; border-radius: 50%; cursor: pointer; color: #999; transition: all 0.2s ease; }
+.pin-btn:hover { background: #f0f0f0; color: #568265; }
+.pin-btn.pinned { color: #f39c12; background: #fff8e7; }
+
+/* --- [내 모달 관련 스타일 추가 (HEAD 내용 복구)] --- */
+.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.2s ease-out; }
+.modal-content { background: white; width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.modal-header h3 { margin: 0; font-size: 18px; color: #2c3e50; }
+.close-modal-btn { background: none; border: none; cursor: pointer; padding: 4px; }
+.user-search-box { display: flex; align-items: center; background: #f8f9fa; padding: 12px; border-radius: 12px; margin-bottom: 16px; }
+.search-icon { margin-right: 10px; flex-shrink: 0; }
+.user-search-input { border: none; background: none; width: 100%; font-size: 16px; outline: none; color: #2c3e50; }
+.search-results-list { max-height: 300px; overflow-y: auto; }
+.user-result-item { display: flex; align-items: center; padding: 10px; border-radius: 12px; cursor: pointer; transition: background 0.2s; }
+.user-result-item:hover { background: #f0f7f2; }
+.user-avatar.small { width: 40px; height: 40px; margin-right: 12px; }
+.user-name { flex: 1; font-weight: 600; color: #2c3e50; }
+.start-chat-text { font-size: 13px; color: #568265; font-weight: 600; }
+.loading-indicator { display: flex; justify-content: center; padding: 20px; }
+.no-results { text-align: center; color: #999; padding: 20px; font-size: 14px; }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+.loading-spinner.small { width: 24px; height: 24px; border-width: 2px; }
+
+/* 미디어 쿼리는 보통 맨 아래에 둡니다 */
 @media (max-width: 768px) {
   .header { padding: 12px 16px; }
   .header h1 { font-size: 20px; }
@@ -612,69 +616,4 @@ const formatPrice = (price) => new Intl.NumberFormat('ko-KR').format(price) + '�
 .tab-btn:focus, .message-item:focus, .floating-action-btn:focus { outline: 2px solid #568265; outline-offset: 2px; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 .message-item.loading { animation: pulse 1.5s infinite; }
-
-.header-left { display: flex; align-items: center; gap: 16px; flex: 1; }
-.back-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; background: none; border: none; border-radius: 50%; cursor: pointer; color: #2c3e50; transition: all 0.2s ease; flex-shrink: 0; }
-.back-btn:hover { background: #f8f9fa; }
-.header h1 { margin: 0; font-size: 22px; font-weight: 700; color: #2c3e50; }
-.header-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.search-btn, .compose-btn { display: flex; align-items: center; justify-content: center; width: 40px; height: 40px; background: none; border: none; border-radius: 50%; cursor: pointer; color: #666; transition: all 0.2s ease; }
-.search-btn:hover, .compose-btn:hover { background: #f8f9fa; color: #568265; }
-.search-btn.active { color: #568265; background: #f0f7f2; }
-
-.tab-container { background: white; padding: 16px 20px; border-bottom: 1px solid #f0f0f0; }
-.tab-wrapper { position: relative; background: #f8f9fa; border-radius: 25px; padding: 4px; display: flex; max-width: 400px; margin: 0 auto; }
-.tab-slider { position: absolute; top: 4px; bottom: 4px; width: calc(50% - 4px); background: linear-gradient(135deg, #568265, #4a7058); border-radius: 21px; transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 2px 8px rgba(86, 130, 101, 0.3); }
-.tab-btn { flex: 1; background: none; border: none; cursor: pointer; padding: 12px 16px; border-radius: 21px; transition: all 0.3s ease; position: relative; z-index: 2; }
-.tab-content { display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 14px; font-weight: 600; color: #666; transition: color 0.3s ease; }
-.tab-btn.active .tab-content { color: white; }
-.count-badge { background: #e74c3c; color: white; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 10px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; margin-left: 4px; }
-.tab-btn.active .count-badge { background: rgba(255, 255, 255, 0.3); }
-
-.content-area { flex: 1; background: white; overflow: hidden; }
-.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 80px 20px; text-align: center; }
-.empty-illustration { margin-bottom: 24px; opacity: 0.6; }
-.empty-state h3 { font-size: 20px; color: #2c3e50; margin: 0 0 12px 0; font-weight: 600; }
-.empty-state p { font-size: 16px; color: #666; margin: 0 0 32px 0; line-height: 1.5; }
-.start-chat-btn { padding: 14px 28px; background: linear-gradient(135deg, #568265, #4a7058); color: white; border: none; border-radius: 25px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(86, 130, 101, 0.3); }
-.start-chat-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(86, 130, 101, 0.4); }
-
-.message-list { padding: 0; }
-.message-item { display: flex; align-items: flex-start; gap: 16px; padding: 20px; border-bottom: 1px solid #f8f9fa; cursor: pointer; transition: all 0.2s ease; position: relative; }
-.message-item:hover { background: #f8f9fa; }
-.message-item.unread { background: linear-gradient(90deg, rgba(86, 130, 101, 0.05), transparent); }
-.message-item.unread::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: linear-gradient(135deg, #568265, #4a7058); }
-.message-avatar { position: relative; flex-shrink: 0; }
-.user-avatar { width: 52px; height: 52px; border-radius: 50%; object-fit: cover; border: 2px solid #f0f0f0; }
-.notification-icon { width: 52px; height: 52px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; color: white; font-weight: 600; }
-.unread-indicator { position: absolute; top: 2px; right: 2px; width: 14px; height: 14px; background: #e74c3c; border-radius: 50%; border: 3px solid white; }
-.unread-count { position: absolute; top: -6px; right: -6px; background: #e74c3c; color: white; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 12px; min-width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border: 2px solid white; }
-
-.message-content { flex: 1; min-width: 0; }
-.message-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6px; gap: 12px; }
-.message-title { font-size: 17px; font-weight: 600; color: #2c3e50; margin: 0; line-height: 1.3; }
-.message-time { font-size: 13px; color: #999; white-space: nowrap; flex-shrink: 0; }
-.message-preview { font-size: 15px; color: #666; line-height: 1.4; margin: 0 0 8px 0; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.own-message { color: #568265; font-weight: 500; }
-
-/* 모달 스타일들 그대로 유지 */
-.modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; animation: fadeIn 0.2s ease-out; }
-.modal-content { background: white; width: 90%; max-width: 400px; border-radius: 20px; padding: 20px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1); animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
-.modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-.modal-header h3 { margin: 0; font-size: 18px; color: #2c3e50; }
-.close-modal-btn { background: none; border: none; cursor: pointer; padding: 4px; }
-.user-search-box { display: flex; align-items: center; background: #f8f9fa; padding: 12px; border-radius: 12px; margin-bottom: 16px; }
-.search-icon { margin-right: 10px; flex-shrink: 0; }
-.user-search-input { border: none; background: none; width: 100%; font-size: 16px; outline: none; color: #2c3e50; }
-.search-results-list { max-height: 300px; overflow-y: auto; }
-.user-result-item { display: flex; align-items: center; padding: 10px; border-radius: 12px; cursor: pointer; transition: background 0.2s; }
-.user-result-item:hover { background: #f0f7f2; }
-.user-avatar.small { width: 40px; height: 40px; margin-right: 12px; }
-.user-name { flex: 1; font-weight: 600; color: #2c3e50; }
-.start-chat-text { font-size: 13px; color: #568265; font-weight: 600; }
-.loading-indicator { display: flex; justify-content: center; padding: 20px; }
-.no-results { text-align: center; color: #999; padding: 20px; font-size: 14px; }
-@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-@keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-.loading-spinner.small { width: 24px; height: 24px; border-width: 2px; }
 </style>
