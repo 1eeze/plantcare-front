@@ -232,9 +232,39 @@ const isOwnProfile = computed(() => {
   return route.params.userId === currentUserId.value
 })
 
-const availableTitles = [{ id: 1, name: '새싹 초보', emoji: '🌱' }, { id: 2, name: '그린 러너', emoji: '🏃' }, { id: 3, name: '식물 애호가', emoji: '💚' }, { id: 4, name: '그린 마스터', emoji: '🌿' }, { id: 5, name: '식물 박사', emoji: '🎓' }, { id: 6, name: '정글 메이커', emoji: '🌴' }, { id: 7, name: '플랜테리어 디자이너', emoji: '🪴' }, { id: 8, name: '식물 수집가', emoji: '🏆' }]
-const userProfile = ref({ level: '새싹 초보 🌱', bio: '', location: '', verified: true, rating: 4.8, reviewCount: 124, trustScore: 95, badges: [{ type: 'verified', icon: '✅', text: '본인인증' }, { type: 'seller', icon: '🏆', text: '우수판매자' }, { type: 'expert', icon: '🌿', text: '식물전문가' }] })
-const userStats = ref({ plantsCount: 0, postsCount: 0, salesCount: 0, followersCount: 0, followingCount: 0 }) 
+const availableTitles = [
+  { id: 1, name: '새싹 초보', emoji: '🌱' }, 
+  { id: 2, name: '그린 러너', emoji: '🏃' }, 
+  { id: 3, name: '식물 애호가', emoji: '💚' }, 
+  { id: 4, name: '그린 마스터', emoji: '🌿' }, 
+  { id: 5, name: '식물 박사', emoji: '🎓' }, 
+  { id: 6, name: '정글 메이커', emoji: '🌴' }, 
+  { id: 7, name: '플랜테리어 디자이너', emoji: '🪴' }, 
+  { id: 8, name: '식물 수집가', emoji: '🏆' }
+]
+
+const userProfile = ref({ 
+  level: '새싹 초보 🌱', 
+  bio: '', 
+  location: '', 
+  verified: true, 
+  rating: 4.8, 
+  reviewCount: 124, 
+  trustScore: 95, 
+  badges: [
+    { type: 'verified', icon: '✅', text: '본인인증' }, 
+    { type: 'seller', icon: '🏆', text: '우수판매자' }, 
+    { type: 'expert', icon: '🌿', text: '식물전문가' }
+  ] 
+})
+
+const userStats = ref({ 
+  plantsCount: 0, 
+  postsCount: 0, 
+  salesCount: 0, 
+  followersCount: 0, 
+  followingCount: 0 
+}) 
 
 const tabs = [
   { key: 'selling', label: '판매중', icon: 'M3 3H5L5.4 5M7 13H17L21 5H5.4M7 13L5.4 5M7 13L4.7 15.3C4.3 15.7 4.6 16.5 5.1 16.5H17M17 13V17C17 18.1 17.9 19 19 19C20.1 19 21 18.1 21 17C21 15.9 20.1 15 19 15C17.9 15 17 15.9 17 17ZM9 19C9 20.1 8.1 21 7 21C5.9 21 5 20.1 5 19C5 17.9 5.9 17 7 17C8.1 17 9 17.9 9 19Z' },
@@ -247,8 +277,28 @@ const tabs = [
 const bookmarkedPosts = ref([]) 
 const sellingPosts = ref([]) 
 const myPlants = ref([]) 
-const reviews = ref([{ id: 1, reviewerName: 'PlantLover', reviewerAvatar: 'https://picsum.photos/40?random=1', rating: 5, text: '친절해요!', date: '2024-08-20', plantInfo: { name: '몬스테라', image: plantImg1 } }])
-const photos = ref([{ id: 1, url: plantImg1, caption: '새싹', likes: 23, comments: 5 }])
+const reviews = ref([
+  { 
+    id: 1, 
+    reviewerName: 'PlantLover', 
+    reviewerAvatar: 'https://picsum.photos/40?random=1', 
+    rating: 5, 
+    text: '친절해요!', 
+    date: '2024-08-20', 
+    plantInfo: { name: '몬스테라', image: plantImg1 } 
+  }
+])
+const photos = ref([
+  { id: 1, url: plantImg1, caption: '새싹', likes: 23, comments: 5 }
+])
+
+// JSONB 배열에서 최신 값 추출 헬퍼 함수
+const getLatestSensorValue = (jsonbArray) => {
+  if (!jsonbArray || !Array.isArray(jsonbArray) || jsonbArray.length === 0) {
+    return null
+  }
+  return jsonbArray[0]?.value ?? null
+}
 
 const loadProfile = async () => {
   try {
@@ -260,7 +310,12 @@ const loadProfile = async () => {
     if (!targetId || targetId === 'me') targetId = user.id
 
     // 1. 유저 기본 정보
-    const { data, error } = await supabase.from('Users').select('name, avatar_url, bio, location, titleId').eq('id', targetId).single()
+    const { data, error } = await supabase
+      .from('Users')
+      .select('name, avatar_url, bio, location, titleId')
+      .eq('id', targetId)
+      .single()
+    
     if (error && error.code !== 'PGRST116') throw error
     
     if (data) {
@@ -282,74 +337,137 @@ const loadProfile = async () => {
       .order('created_at', { ascending: false })
 
     if (postsData) {
-      sellingPosts.value = postsData.map(post => ({ ...post, date: post.created_at, views: post.views || 0 }))
+      sellingPosts.value = postsData.map(post => ({ 
+        ...post, 
+        date: post.created_at, 
+        views: post.views || 0 
+      }))
       userStats.value.postsCount = postsData.length
       userStats.value.salesCount = postsData.filter(p => p.status === 'sold').length
     }
 
-    // 3. 식물 로드
+    // 3. 식물 로드 (센서 데이터 포함)
     const { data: plantsData } = await supabase
-        .from('plants')
-        .select('*')
-        .eq('user_id', targetId)
+      .from('User_Plants')
+      .select(`
+        id, name, photos, created_at, updated_at,
+        sensor_data:sensor_data!User_Plants_sensor_data_fkey (
+          humidity, temp, light
+        )
+      `)
+      .eq('user_id', targetId)
+      .order('created_at', { ascending: false })
     
     if (plantsData) {
-        myPlants.value = plantsData.map(p => ({
-            id: p.id,
-            name: p.name,
-            image: p.photos?.[0]?.url || plantImg1,
-            health: 'good', 
-            daysOwned: 0    
-        }))
-        userStats.value.plantsCount = plantsData.length
+      myPlants.value = plantsData.map(p => {
+        const sensorData = p.sensor_data
+        const humidity = getLatestSensorValue(sensorData?.humidity) ?? 50
+        const temp = getLatestSensorValue(sensorData?.temp) ?? 22
+        const light = getLatestSensorValue(sensorData?.light) ?? 70
+
+        // 건강 상태 판단
+        let health = 'excellent'
+        if (humidity < 30 || temp < 15 || temp > 30 || light < 40) {
+          health = 'poor'
+        } else if (humidity < 40 || light < 50) {
+          health = 'fair'
+        } else if (humidity < 50 || light < 60) {
+          health = 'good'
+        }
+
+        // 키운 일수 계산
+        const createdDate = new Date(p.created_at)
+        const today = new Date()
+        const daysOwned = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24))
+
+        return {
+          id: p.id,
+          name: p.name || '이름 없음',
+          type: '식물',
+          image: (p.photos && p.photos[0]?.url) || plantImg1,
+          health: health,
+          daysOwned: daysOwned
+        }
+      })
+      userStats.value.plantsCount = myPlants.value.length
     }
 
     // 4. 북마크 로드
     if (targetId === currentUserId.value) {
-        const { data: bookmarksData, error } = await supabase
-            .from('bookmarks')
-            .select(`
-                post_id,
-                posts:post_id (*) 
-            `) 
-            .eq('user_id', currentUserId.value)
-            
-        if (error) {
-            console.error('북마크 로드 에러:', error)
-        } else if (bookmarksData) {
-            bookmarkedPosts.value = bookmarksData
-                .map(b => b.posts) // posts 객체만 추출
-                .filter(post => post !== null) // 삭제된 글 제외
-        }
+      const { data: bookmarksData, error: bookmarkError } = await supabase
+        .from('bookmarks')
+        .select(`
+          post_id,
+          posts:post_id (*) 
+        `) 
+        .eq('user_id', currentUserId.value)
+          
+      if (bookmarkError) {
+        console.error('북마크 로드 에러:', bookmarkError)
+      } else if (bookmarksData) {
+        bookmarkedPosts.value = bookmarksData
+          .map(b => b.posts)
+          .filter(post => post !== null)
+      }
     }
 
     await fetchFollowCounts(targetId)
     if (!isOwnProfile.value) await checkIsFollowing(targetId)
 
-  } catch (e) { console.error(e) }
+  } catch (e) { 
+    console.error('프로필 로드 에러:', e) 
+  }
 }
 
 const fetchFollowCounts = async (targetId) => {
-  const { count: followers } = await supabase.from('Follows').select('*', { count: 'exact', head: true }).eq('following_id', targetId)
+  const { count: followers } = await supabase
+    .from('Follows')
+    .select('*', { count: 'exact', head: true })
+    .eq('following_id', targetId)
   userStats.value.followersCount = followers || 0
-  const { count: following } = await supabase.from('Follows').select('*', { count: 'exact', head: true }).eq('follower_id', targetId)
+  
+  const { count: following } = await supabase
+    .from('Follows')
+    .select('*', { count: 'exact', head: true })
+    .eq('follower_id', targetId)
   userStats.value.followingCount = following || 0
 }
 
 const checkIsFollowing = async (targetId) => {
-  const { data } = await supabase.from('Follows').select('id').eq('follower_id', currentUserId.value).eq('following_id', targetId).single()
+  const { data } = await supabase
+    .from('Follows')
+    .select('id')
+    .eq('follower_id', currentUserId.value)
+    .eq('following_id', targetId)
+    .single()
   isFollowing.value = !!data
 }
 
 const toggleFollow = async () => {
   const targetId = route.params.userId
   if (!targetId || targetId === 'me') return
+  
   if (isFollowing.value) {
-    const { error } = await supabase.from('Follows').delete().eq('follower_id', currentUserId.value).eq('following_id', targetId)
-    if (!error) { isFollowing.value = false; userStats.value.followersCount-- }
+    const { error } = await supabase
+      .from('Follows')
+      .delete()
+      .eq('follower_id', currentUserId.value)
+      .eq('following_id', targetId)
+    if (!error) { 
+      isFollowing.value = false
+      userStats.value.followersCount-- 
+    }
   } else {
-    const { error } = await supabase.from('Follows').insert({ follower_id: currentUserId.value, following_id: targetId })
-    if (!error) { isFollowing.value = true; userStats.value.followersCount++ }
+    const { error } = await supabase
+      .from('Follows')
+      .insert({ 
+        follower_id: currentUserId.value, 
+        following_id: targetId 
+      })
+    if (!error) { 
+      isFollowing.value = true
+      userStats.value.followersCount++ 
+    }
   }
 }
 
@@ -363,13 +481,21 @@ const openFollowModal = async (type) => {
 
   try {
     if (type === 'followers') {
-      const { data } = await supabase.from('Follows').select('follower_id, Users!Follows_follower_id_fkey(id, name, avatar_url)').eq('following_id', targetId)
+      const { data } = await supabase
+        .from('Follows')
+        .select('follower_id, Users!Follows_follower_id_fkey(id, name, avatar_url)')
+        .eq('following_id', targetId)
       if (data) followList.value = data.map(f => f.Users)
     } else {
-      const { data } = await supabase.from('Follows').select('following_id, Users!Follows_following_id_fkey(id, name, avatar_url)').eq('follower_id', targetId)
+      const { data } = await supabase
+        .from('Follows')
+        .select('following_id, Users!Follows_following_id_fkey(id, name, avatar_url)')
+        .eq('follower_id', targetId)
       if (data) followList.value = data.map(f => f.Users)
     }
-  } catch (e) { console.error(e) }
+  } catch (e) { 
+    console.error('팔로우 목록 로드 에러:', e) 
+  }
 }
 
 const startChat = () => {
@@ -395,11 +521,20 @@ const goToPlantDetail = (id) => router.push(`/plant-detail/${id}`)
 const openPhotoModal = (p) => console.log(p)
 const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'
 const formatDate = (d) => {
-    if(!d) return ''
-    return new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+  if(!d) return ''
+  return new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
-const getStatusText = (s) => ({ available: '판매중', reserved: '예약중', sold: '판매완료' }[s] || s)
-const getHealthIcon = (h) => ({ excellent: '🌟' }[h] || '✅')
+const getStatusText = (s) => ({ 
+  available: '판매중', 
+  reserved: '예약중', 
+  sold: '판매완료' 
+}[s] || s)
+const getHealthIcon = (h) => ({ 
+  excellent: '🌟',
+  good: '✅',
+  fair: '⚠️',
+  poor: '🆘'
+}[h] || '✅')
 const showPlants = () => activeTab.value = 'plants'
 const showPosts = () => activeTab.value = 'selling'
 const showSales = () => alert('판매 완료 목록 (준비중)')
@@ -466,15 +601,19 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .empty-state p { font-size: 14px; color: #666; margin: 0 0 20px 0; }
 .empty-action-btn { padding: 12px 24px; background: #568265; color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; }
 .post-grid, .plants-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 16px; }
-.post-card, .plant-card { background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+.post-card, .plant-card { background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1); cursor: pointer; }
 .post-image, .plant-image { width: 100%; aspect-ratio: 1; object-fit: cover; position: relative; }
 .post-image img, .plant-image img { width: 100%; height: 100%; object-fit: cover; }
 .post-status { position: absolute; top: 12px; left: 12px; padding: 4px 8px; background: #27ae60; color: white; font-size: 11px; border-radius: 12px; }
 .post-price { position: absolute; bottom: 12px; right: 12px; background: rgba(0,0,0,0.8); color: white; padding: 6px 10px; border-radius: 12px; font-size: 12px; }
 .post-info, .plant-info { padding: 12px; text-align: center; }
 .post-title, .plant-name { font-size: 14px; font-weight: 600; margin: 0 0 4px; }
-.post-meta, .plant-days { font-size: 12px; color: #666; margin: 0; }
+.post-meta, .plant-days, .plant-type { font-size: 12px; color: #666; margin: 0; }
 .plant-health { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; background: rgba(255,255,255,0.9); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; }
+.plant-health.excellent { background: rgba(39, 174, 96, 0.2); }
+.plant-health.good { background: rgba(46, 204, 113, 0.2); }
+.plant-health.fair { background: rgba(241, 196, 15, 0.2); }
+.plant-health.poor { background: rgba(231, 76, 60, 0.2); }
 .reviews-content { padding: 20px; }
 .reviews-list { display: flex; flex-direction: column; gap: 20px; }
 .review-item { background: #f8f9fa; padding: 20px; border-radius: 16px; border-left: 4px solid #568265; }
@@ -485,9 +624,6 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .review-stars { display: flex; gap: 2px; }
 .review-date { font-size: 12px; color: #666; }
 .review-text { font-size: 14px; color: #2c3e50; line-height: 1.5; margin: 0 0 12px 0; }
-.review-plant { display: flex; align-items: center; gap: 8px; background: white; padding: 8px 12px; border-radius: 12px; }
-.review-plant img { width: 32px; height: 32px; border-radius: 8px; object-fit: cover; }
-.review-plant span { font-size: 12px; color: #666; font-weight: 500; }
 .photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
 .photo-item { position: relative; aspect-ratio: 1; overflow: hidden; cursor: pointer; transition: all 0.3s ease; }
 .photo-item img { width: 100%; height: 100%; object-fit: cover; }

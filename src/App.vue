@@ -70,7 +70,7 @@ body, html, #app {
 }
 
 body {
-  background: linear-gradient(135deg, #e8f9ef, #f7fff9);
+  background: linear-gradient(135deg, #f7f6ed 0%, #eef2e6 100%);
   min-height: 100vh;
 }
 
