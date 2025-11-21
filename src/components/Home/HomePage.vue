@@ -26,8 +26,11 @@
             </div>
             <div class="card-summary">
               <p class="pest-name">{{ pestResult?.krName || '감지되지 않음' }}</p>
-              <p v-if="pestResult?.confidence" class="confidence">
+              <p v-if="pestResult?.confidence > 0" class="confidence">
                 신뢰도: {{ (pestResult.confidence * 100).toFixed(1) }}%
+              </p>
+              <p v-else-if="pestResult?.className === 'none'" class="no-detection-msg">
+                사진에서 병충해가 감지되지 않았습니다. 건강한 식물입니다! 🌿
               </p>
             </div>
             
@@ -376,41 +379,170 @@ const loadUserNickname = async () => {
   } catch (e) { console.error(e) }
 }
 
-// 병충해 분석
+// 병충해 분석 (개선 버전)
 async function analyzePest(imageFile) {
   const formData = new FormData()
   formData.append("file", imageFile)
+  
   try {
-    const response = await fetch(PEST_API_URL, { method: 'POST', body: formData })
-    if (!response.ok) throw new Error(`병충해 API 오류: ${response.statusText}`)
+    console.log('🔍 병충해 API 요청 시작:', PEST_API_URL)
+    console.log('📁 이미지 파일:', imageFile.name, '크기:', imageFile.size, '타입:', imageFile.type)
+    
+    const response = await fetch(PEST_API_URL, { 
+      method: 'POST', 
+      body: formData 
+    })
+    
+    console.log('📡 API 응답 상태:', response.status, response.statusText)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ API 응답 오류:', errorText)
+      throw new Error(`병충해 API 오류: ${response.statusText}`)
+    }
+    
     const data = await response.json()
+    console.log('📦 병충해 API 원본 응답:', JSON.stringify(data, null, 2))
 
-    if (data.predictions && data.predictions.length > 0) {
+    // 응답 형식 1: predictions 배열
+    if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
       const firstPrediction = data.predictions[0]
+      console.log('✅ predictions 배열에서 첫 번째 예측:', firstPrediction)
+      
+      const className = firstPrediction.class_name || firstPrediction.class || firstPrediction.label
+      const confidence = firstPrediction.confidence || firstPrediction.score || 0
+      
+      console.log(`🐛 감지됨: ${className} (신뢰도: ${(confidence * 100).toFixed(1)}%)`)
+      
       return { 
-        className: firstPrediction.class_name, 
-        krName: PEST_DICT[firstPrediction.class_name] || PEST_DICT.default, 
-        confidence: firstPrediction.confidence 
+        className: className, 
+        krName: PEST_DICT[className] || PEST_DICT.default, 
+        confidence: confidence 
       }
-    } else {
-      return { className: 'none', krName: "탐지된 병충해 없음", confidence: 0 }
+    }
+    
+    // 응답 형식 2: 직접 class 정보
+    if (data.class_name || data.class || data.label) {
+      const className = data.class_name || data.class || data.label
+      const confidence = data.confidence || data.score || 0
+      
+      console.log('✅ 직접 클래스명 발견:', className)
+      console.log(`🐛 감지됨: ${className} (신뢰도: ${(confidence * 100).toFixed(1)}%)`)
+      
+      return { 
+        className: className, 
+        krName: PEST_DICT[className] || PEST_DICT.default, 
+        confidence: confidence 
+      }
+    }
+    
+    // 응답 형식 3: 다른 구조 탐색
+    console.warn('⚠️ 알려진 형식과 맞지 않음. 전체 응답 구조:')
+    console.warn(Object.keys(data))
+    
+    // 재귀적으로 class나 prediction 찾기
+    const searchForPrediction = (obj, depth = 0) => {
+      if (depth > 3) return null // 최대 깊이 제한
+      
+      for (const key of Object.keys(obj)) {
+        const value = obj[key]
+        
+        // class 관련 키 찾기
+        if ((key.toLowerCase().includes('class') || 
+             key.toLowerCase().includes('label') ||
+             key.toLowerCase().includes('prediction')) && 
+            typeof value === 'string') {
+          return { className: value, confidence: obj.confidence || obj.score || 0 }
+        }
+        
+        // 배열인 경우
+        if (Array.isArray(value) && value.length > 0) {
+          const result = searchForPrediction(value[0], depth + 1)
+          if (result) return result
+        }
+        
+        // 객체인 경우
+        if (typeof value === 'object' && value !== null) {
+          const result = searchForPrediction(value, depth + 1)
+          if (result) return result
+        }
+      }
+      return null
+    }
+    
+    const foundPrediction = searchForPrediction(data)
+    if (foundPrediction) {
+      console.log('🔎 재귀 탐색으로 발견:', foundPrediction)
+      return {
+        className: foundPrediction.className,
+        krName: PEST_DICT[foundPrediction.className] || PEST_DICT.default,
+        confidence: foundPrediction.confidence
+      }
+    }
+    
+    // 아무것도 못 찾음
+    console.warn('❌ 예측 결과 없음')
+    return { 
+      className: 'none', 
+      krName: "탐지된 병충해 없음 (응답 형식 불일치)", 
+      confidence: 0 
     }
   } catch (err) {
-    return { className: 'error', krName: "판별 오류", confidence: 0 }
+    console.error('💥 병충해 분석 예외 발생:', err)
+    return { 
+      className: 'error', 
+      krName: `판별 오류: ${err.message}`, 
+      confidence: 0 
+    }
   }
 }
 
-// 생육 분석
+// 생육 분석 (개선 버전)
 async function analyzeGrowth(imageFile) {
   const formData = new FormData()
   formData.append("file", imageFile)
+  
   try {
-    const response = await fetch(GROWTH_API_URL, { method: 'POST', body: formData })
-    if (!response.ok) throw new Error(`생육 API 오류: ${response.statusText}`)
+    console.log('🌱 생육 API 요청 시작:', GROWTH_API_URL)
+    
+    const response = await fetch(GROWTH_API_URL, { 
+      method: 'POST', 
+      body: formData 
+    })
+    
+    console.log('📡 생육 API 응답 상태:', response.status, response.statusText)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ 생육 API 응답 오류:', errorText)
+      throw new Error(`생육 API 오류: ${response.statusText}`)
+    }
+    
     const data = await response.json()
+    console.log('📦 생육 API 원본 응답:', JSON.stringify(data, null, 2))
 
-    if (data.predictions && data.predictions.length > 0) {
+    // 응답 형식 1: predictions 객체 (실제 API 구조)
+    if (data.predictions && typeof data.predictions === 'object' && !Array.isArray(data.predictions)) {
+      const p = data.predictions
+      console.log('✅ 생육 정보 발견 (predictions 객체):', p)
+      
+      const organClass = p.organ?.class || p.organ
+      const stageClass = p.stage?.class || p.stage
+      const organConf = p.organ?.confidence
+      const stageConf = p.stage?.confidence
+      
+      return { 
+        organ: ORGAN_DICT[organClass] || organClass, 
+        stage: STAGE_DICT[stageClass] || stageClass, 
+        organConfidence: organConf, 
+        stageConfidence: stageConf 
+      }
+    }
+    
+    // 응답 형식 2: predictions 배열
+    if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
       const p = data.predictions[0]
+      console.log('✅ 생육 정보 발견 (predictions 배열):', p)
       return { 
         organ: ORGAN_DICT[p.organ] || p.organ, 
         stage: STAGE_DICT[p.stage] || p.stage, 
@@ -418,7 +550,10 @@ async function analyzeGrowth(imageFile) {
         stageConfidence: p.stage_confidence 
       }
     }
+    
+    // 응답 형식 3: 직접 organ/stage
     if (data.organ && data.stage) {
+      console.log('✅ 생육 정보 발견 (직접):', data)
       return { 
         organ: ORGAN_DICT[data.organ] || data.organ, 
         stage: STAGE_DICT[data.stage] || data.stage, 
@@ -426,29 +561,51 @@ async function analyzeGrowth(imageFile) {
         stageConfidence: data.stage_confidence 
       }
     }
+    
+    console.warn('⚠️ 생육 정보 없음')
     return null
-  } catch (err) { return null }
+  } catch (err) { 
+    console.error('💥 생육 분석 예외 발생:', err)
+    return null 
+  }
 }
 
 const handleImageFile = async (file) => {
-  if (!file) return
+  if (!file) {
+    console.warn('⚠️ 파일이 선택되지 않음')
+    return
+  }
+  
+  console.log('📸 이미지 분석 시작:', file.name)
+  
   showCameraChoice.value = false
   analyzingPest.value = true
   pestResult.value = null
   growthResult.value = null
 
   try {
-    const [pestRes, growthRes] = await Promise.all([analyzePest(file), analyzeGrowth(file)])
+    const [pestRes, growthRes] = await Promise.all([
+      analyzePest(file), 
+      analyzeGrowth(file)
+    ])
+    
+    console.log('✅ 병충해 결과:', pestRes)
+    console.log('✅ 생육 결과:', growthRes)
+    
     pestResult.value = pestRes
     growthResult.value = growthRes
     
     if (pestRes.className === 'error' && !growthRes) {
-      alert('분석에 실패했습니다. 네트워크를 확인해주세요.')
+      alert('분석에 실패했습니다. 네트워크를 확인하거나 다시 시도해주세요.')
     } else {
       showPestResult.value = true
     }
-  } catch (err) { alert('오류 발생: ' + err.message) }
-  finally { analyzingPest.value = false }
+  } catch (err) { 
+    console.error('💥 전체 분석 오류:', err)
+    alert('오류 발생: ' + err.message) 
+  } finally { 
+    analyzingPest.value = false 
+  }
 }
 
 // 기타 헬퍼 함수
@@ -818,6 +975,7 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .card-summary { padding-left: 28px; }
 .pest-name, .organ-name, .stage-name { font-size: 16px; font-weight: 600; color: #2c3e50; margin: 0 0 4px 0; }
 .confidence { font-size: 12px; color: #7f8c8d; margin: 0; }
+.no-detection-msg { font-size: 13px; color: #2ed573; margin: 4px 0 0 0; line-height: 1.4; }
 
 /* 상세 정보 */
 .card-detail { margin-top: 12px; padding: 12px; background: white; border-radius: 8px; border-left: 3px solid #4a6444; }
