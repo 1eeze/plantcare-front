@@ -238,7 +238,7 @@ import plant_pic from '../../assets/plant.png'
 
 const router = useRouter()
 
-// API URLs (팀원 기능)
+// API URLs
 const PEST_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/pest'
 const GROWTH_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/growth'
 
@@ -258,7 +258,7 @@ const userName = ref('식물집사')
 const location = ref('Seoul, KOREA')
 const showMenu = ref(false)
 
-// 알림 관련 상태 (사용자님 기능)
+// 알림 관련 상태
 const notificationCount = ref(0) 
 
 // 날씨 관련 상태
@@ -277,7 +277,7 @@ const todayTasks = ref([
 let channel = null
 let badgeSubscription = null
 
-// --- [병충해/생육 사전 데이터] (팀원 기능) ---
+// 병충해/생육 사전 데이터
 const PEST_DICT = { 
   "agrotis_ipsilon_egg": "거세미나방 알", "agrotis_ipsilon_larva": "거세미나방 유충", "agrotis_ipsilon_adult": "거세미나방 성충", 
   "Frankliniella_occidentalis_egg": "꽃노랑총채벌레 알", "Frankliniella_occidentalis_larva": "꽃노랑총채벌레 유충", "Frankliniella_occidentalis_adult": "꽃노랑총채벌레 성충", 
@@ -306,10 +306,17 @@ const STAGE_DICT = { "seedling": "파종기 (새싹)", "growing": "성장기 (�
 
 const PEST_SOLUTION = {
   "default": "전문가와 상담 후 적절한 방제법을 선택하세요."
-  // (상세 내용은 지면 관계상 생략했으나, 팀원 코드 그대로 사용됨)
 }
 
-// --- [사용자님 기능] 알림 카운트 조회 ---
+// JSONB 배열에서 최신 값 추출
+const getLatestSensorValue = (jsonbArray) => {
+  if (!jsonbArray || !Array.isArray(jsonbArray) || jsonbArray.length === 0) {
+    return null
+  }
+  return jsonbArray[0]?.value ?? null
+}
+
+// 알림 카운트 조회
 const fetchUnreadCount = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -340,7 +347,7 @@ const fetchUnreadCount = async () => {
   } catch (e) { console.error(e) }
 }
 
-// --- [사용자님 기능] 알림 배지 실시간 업데이트 ---
+// 알림 배지 실시간 업데이트
 const subscribeToBadgeUpdates = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
@@ -348,13 +355,18 @@ const subscribeToBadgeUpdates = async () => {
 
   badgeSubscription = supabase
     .channel('home-badge-updates')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` }, () => {
-        fetchUnreadCount()
+    .on('postgres_changes', { 
+      event: '*', 
+      schema: 'public', 
+      table: 'messages', 
+      filter: `receiver_id=eq.${user.id}` 
+    }, () => {
+      fetchUnreadCount()
     })
     .subscribe()
 }
 
-// --- [공통] 유저 닉네임 로드 ---
+// 유저 닉네임 로드
 const loadUserNickname = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
@@ -364,7 +376,7 @@ const loadUserNickname = async () => {
   } catch (e) { console.error(e) }
 }
 
-// --- [팀원 기능] 병충해/생육 분석 ---
+// 병충해 분석
 async function analyzePest(imageFile) {
   const formData = new FormData()
   formData.append("file", imageFile)
@@ -375,7 +387,11 @@ async function analyzePest(imageFile) {
 
     if (data.predictions && data.predictions.length > 0) {
       const firstPrediction = data.predictions[0]
-      return { className: firstPrediction.class_name, krName: PEST_DICT[firstPrediction.class_name] || PEST_DICT.default, confidence: firstPrediction.confidence }
+      return { 
+        className: firstPrediction.class_name, 
+        krName: PEST_DICT[firstPrediction.class_name] || PEST_DICT.default, 
+        confidence: firstPrediction.confidence 
+      }
     } else {
       return { className: 'none', krName: "탐지된 병충해 없음", confidence: 0 }
     }
@@ -384,6 +400,7 @@ async function analyzePest(imageFile) {
   }
 }
 
+// 생육 분석
 async function analyzeGrowth(imageFile) {
   const formData = new FormData()
   formData.append("file", imageFile)
@@ -394,10 +411,20 @@ async function analyzeGrowth(imageFile) {
 
     if (data.predictions && data.predictions.length > 0) {
       const p = data.predictions[0]
-      return { organ: ORGAN_DICT[p.organ] || p.organ, stage: STAGE_DICT[p.stage] || p.stage, organConfidence: p.organ_confidence, stageConfidence: p.stage_confidence }
+      return { 
+        organ: ORGAN_DICT[p.organ] || p.organ, 
+        stage: STAGE_DICT[p.stage] || p.stage, 
+        organConfidence: p.organ_confidence, 
+        stageConfidence: p.stage_confidence 
+      }
     }
     if (data.organ && data.stage) {
-      return { organ: ORGAN_DICT[data.organ] || data.organ, stage: STAGE_DICT[data.stage] || data.stage, organConfidence: data.organ_confidence, stageConfidence: data.stage_confidence }
+      return { 
+        organ: ORGAN_DICT[data.organ] || data.organ, 
+        stage: STAGE_DICT[data.stage] || data.stage, 
+        organConfidence: data.organ_confidence, 
+        stageConfidence: data.stage_confidence 
+      }
     }
     return null
   } catch (err) { return null }
@@ -424,7 +451,7 @@ const handleImageFile = async (file) => {
   finally { analyzingPest.value = false }
 }
 
-// --- [팀원 기능] 기타 헬퍼 함수 ---
+// 기타 헬퍼 함수
 const toggleMenu = () => showMenu.value = !showMenu.value
 const openCamera = () => showCameraChoice.value = true
 const takePhoto = () => {
@@ -440,40 +467,153 @@ const pickFromGallery = () => {
   input.click()
 }
 const closePestResult = () => {
-  showPestResult.value = false; showPestDetail.value = false; showOrganDetail.value = false; showStageDetail.value = false
+  showPestResult.value = false
+  showPestDetail.value = false
+  showOrganDetail.value = false
+  showStageDetail.value = false
 }
-const saveAnalysisResult = () => { alert('분석 결과가 저장되었습니다!'); closePestResult() }
+const saveAnalysisResult = () => { 
+  alert('분석 결과가 저장되었습니다!'); 
+  closePestResult() 
+}
 const togglePestDetail = () => showPestDetail.value = !showPestDetail.value
 const toggleOrganDetail = () => showOrganDetail.value = !showOrganDetail.value
 const toggleStageDetail = () => showStageDetail.value = !showStageDetail.value
 const getPestSolution = (cls) => PEST_SOLUTION[cls] || PEST_SOLUTION.default
 const getStageTip = (s) => s ? '관리에 신경써주세요.' : ''
 
-// --- [공통] 식물 목록 및 날씨 로드 ---
+// 실시간 업데이트 설정
 async function setupRealtime() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  if (channel) supabase.removeChannel(channel)
-  channel = supabase.channel('public:plants')
-    .on('postgres_changes', { event: '*', schema: 'public', table: 'plants', filter: `user_id=eq.${user.id}` }, () => loadPlants())
+  
+  if (channel) {
+    supabase.removeChannel(channel)
+    channel = null
+  }
+
+  channel = supabase
+    .channel('public:User_Plants')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'User_Plants', filter: `user_id=eq.${user.id}` },
+      async () => {
+        await loadPlants()
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'User_Plants', filter: `user_id=eq.${user.id}` },
+      async () => {
+        await loadPlants()
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'DELETE', schema: 'public', table: 'User_Plants', filter: `user_id=eq.${user.id}` },
+      ({ old }) => {
+        plants.value = plants.value.filter(x => x.id !== old.id)
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'sensor_data' },
+      async () => {
+        await loadPlants()
+      }
+    )
     .subscribe()
 }
 
+// 식물 목록 로드 (센서 데이터 포함)
 const loadPlants = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  const { data } = await supabase.from('plants').select('*').eq('user_id', user.id).order('created_at', { ascending: false })
-  plants.value = (data || []).map(p => ({
-    id: p.id, name: p.name, image: (p.photos && p.photos[0]?.url) || plant_pic,
-    soilMoisture: p.sensor_moisture ?? 0, lightLevel: p.sensor_light ?? 0, humidity: p.sensor_humidity ?? 0,
-    status: p.status || '상태 양호', needsAttention: !!p.needs_attention
-  }))
+
+  const { data, error } = await supabase
+    .from('User_Plants')
+    .select(`
+      id, user_id, name, locate, photos,
+      created_at, updated_at,
+      sensor_data:sensor_data!User_Plants_sensor_data_fkey (
+        humidity, temp, light
+      )
+    `)
+    .eq('user_id', user.id)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('식물 목록 로드 실패:', error)
+    return
+  }
+
+  plants.value = (data || []).map(p => {
+    const sensorData = p.sensor_data
+    const humidity = getLatestSensorValue(sensorData?.humidity)
+    const temp = getLatestSensorValue(sensorData?.temp)
+    const light = getLatestSensorValue(sensorData?.light)
+
+    const humidityValue = humidity ?? 50
+    const tempValue = temp ?? 22
+    const lightValue = light ?? 70
+
+    const needsAttention = humidityValue < 30 || tempValue < 15 || tempValue > 30 || lightValue < 40
+
+    let status = '상태 양호'
+    if (humidityValue < 30) status = '물 부족'
+    else if (lightValue < 40) status = '빛 부족'
+    else if (tempValue < 15) status = '온도 낮음'
+    else if (tempValue > 30) status = '온도 높음'
+
+    return {
+      id: p.id,
+      name: p.name,
+      image: (p.photos && p.photos[0]?.url) || plant_pic,
+      soilMoisture: Math.round(humidityValue),
+      lightLevel: Math.round(lightValue),
+      humidity: Math.round(humidityValue),
+      temperature: tempValue,
+      lastUpdated: p.updated_at || '',
+      needsAttention: needsAttention,
+      status: status
+    }
+  })
 }
 
-async function ensureDevSession() { /* 생략 */ }
-async function loadWeather() { /* 날씨 로직 유지 */ loadingWeather.value = false } // (내용 줄임)
+async function ensureDevSession() {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      console.log('세션 없음, 개발용 로그인 시도')
+      const { error } = await supabase.auth.signInWithPassword({
+        email: 'test@example.com',
+        password: 'test1234'
+      })
+      if (error) console.error('개발용 로그인 실패:', error)
+    }
+  } catch (e) {
+    console.error('세션 확인 오류:', e)
+  }
+}
 
-// --- 라이프사이클 ---
+async function loadWeather() {
+  loadingWeather.value = true
+  try {
+    weather.value = {
+      temp: 22,
+      description: '맑음',
+      humidity: 65,
+      uv: '보통'
+    }
+    todayTip.value = '오늘은 날씨가 좋아요! 실내 식물은 창가에 두면 좋습니다.'
+  } catch (e) {
+    console.error('날씨 로드 오류:', e)
+  } finally {
+    loadingWeather.value = false
+  }
+}
+
+// 라이프사이클
 onMounted(async () => {
   await ensureDevSession()
   await loadUserNickname()
@@ -491,8 +631,14 @@ onActivated(async () => {
 })
 
 onUnmounted(() => {
-  if (channel) supabase.removeChannel(channel)
-  if (badgeSubscription) supabase.removeChannel(badgeSubscription)
+  if (channel) {
+    supabase.removeChannel(channel)
+    channel = null
+  }
+  if (badgeSubscription) {
+    supabase.removeChannel(badgeSubscription)
+    badgeSubscription = null
+  }
 })
 
 const openNotifications = () => router.push('/notification')
@@ -502,9 +648,11 @@ const addPlant = () => router.push('/add-plant')
 const waterAllPlants = () => {}
 const checkPlantHealth = () => {}
 const setReminder = () => {}
-const completeTask = (id) => { const t = todayTasks.value.find(x => x.id === id); if(t) t.completed = true }
+const completeTask = (id) => { 
+  const t = todayTasks.value.find(x => x.id === id)
+  if(t) t.completed = true 
+}
 const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'status-normal'
-
 </script>
 
 <style scoped>
@@ -516,7 +664,7 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
   position: relative;
 }
 
-/* --- 사이드 메뉴 --- */
+/* 사이드 메뉴 */
 .menu-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.5); z-index: 998; }
 .side-menu { position: fixed; top: 0; left: -280px; width: 280px; height: 100vh; background: #fff; z-index: 999; transition: left 0.3s ease; box-shadow: 2px 0 10px rgba(0, 0, 0, 0.1); }
 .side-menu.menu-open { left: 0; }
@@ -526,18 +674,15 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .menu-item { display: block; padding: 15px 20px; text-decoration: none; color: #333; border-bottom: 1px solid #f5f5f5; transition: background 0.2s; }
 .menu-item:hover { background: #f8f9fa; }
 
-/* --- 헤더 --- */
+/* 헤더 */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20px;
   background: linear-gradient(135deg, #eef2e6 0%, #dfe7d6 100%);
-  
-  /* 호환성을 위해 -webkit- 버전 추가 */
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  
   position: sticky;
   top: 0;
   z-index: 10;
@@ -550,7 +695,7 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .greeting { margin: 0; font-size: 16px; font-weight: 600; color: #2c3e50; }
 .city { margin: 0; font-size: 12px; color: #7f8c8d; }
 
-/* --- 알림 버튼 (사용자님 기능) --- */
+/* 알림 버튼 */
 .notification-btn {
   background: none;
   border: none;
@@ -577,22 +722,24 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
 }
 
-/* --- 날씨 카드 --- */
+/* 날씨 카드 */
 .weather-card { margin: 20px; background: linear-gradient(135deg, #3e6047 0%, #a8c3a0 100%); border-radius: 16px; padding: 20px; color: white; box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); }
 .weather-main { display: flex; align-items: center; gap: 16px; margin-bottom: 12px; }
 .weather-icon { font-size: 32px; }
+.weather-temp { display: flex; flex-direction: column; }
 .temp { font-size: 28px; font-weight: bold; margin-right: 8px; }
 .desc { font-size: 14px; opacity: 0.9; }
 .weather-detail { display: flex; gap: 16px; font-size: 12px; opacity: 0.8; margin-bottom: 16px; }
+.plant-care-tip { margin-top: 12px; }
 .tip-title { font-size: 14px; font-weight: 600; margin: 0 0 4px 0; opacity: 0.9; }
 .tip-content { font-size: 12px; margin: 0; opacity: 0.8; }
 
-/* --- 섹션 공통 --- */
+/* 섹션 공통 */
 .section-title { display: flex; justify-content: space-between; align-items: center; margin: 24px 20px 12px; }
 .section-title h3 { margin: 0; font-size: 18px; font-weight: 600; color: #2c3e50; }
 .view-all { background: none; border: none; color: #4a6444; font-size: 14px; cursor: pointer; font-weight: 500; }
 
-/* --- 카메라 선택 모달 --- */
+/* 카메라 선택 모달 */
 .camera-choice-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 999; display: flex; align-items: flex-end; justify-content: center; }
 .camera-choice-sheet { width: 100%; max-width: 480px; background: #ffffff; border-radius: 16px 16px 0 0; padding: 16px 20px 24px; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15); }
 .camera-choice-title { font-size: 14px; font-weight: 600; color: #2c3e50; margin-bottom: 12px; text-align: center; }
@@ -600,10 +747,10 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .camera-choice-btn:active { background: #dfe7d6; }
 .camera-choice-cancel { width: 100%; padding: 10px; margin-top: 4px; border-radius: 10px; border: none; background: #ffffff; color: #7f8c8d; font-size: 13px; cursor: pointer; }
 
-/* --- 식물 카드 스크롤 --- */
+/* 식물 카드 스크롤 */
 .plant-scroll { display: flex; align-items: center; overflow-x: auto; gap: 16px; padding: 0 20px 20px; scroll-behavior: smooth; }
 .plant-card { flex: 0 0 auto; width: 160px; background: white; border-radius: 16px; padding: 16px; box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
-.plant-sensors-display { display: flex; justify-content: space-around; font-size: 13px; margin: 8px 0; color: #333; }
+.plant-sensors-display { display: flex; flex-direction: column; gap: 4px; font-size: 11px; margin: 8px 0; color: #666; }
 .plant-sensors-display span { display: flex; align-items: center; gap: 4px; }
 .plant-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0, 0, 0, 0.12); }
 .plant-image-container { position: relative; margin-bottom: 12px; }
@@ -616,21 +763,21 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .status-warning { background-color: #ff4757; }
 .status-text { font-size: 11px; color: #666; }
 
-/* --- 식물 추가 카드 --- */
+/* 식물 추가 카드 */
 .add-plant-card { flex: 0 0 auto; width: 160px; height: 200px; background: linear-gradient(135deg, #4a6444 0%, #6b856b 100%); border-radius: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.2s; }
 .add-plant-card:hover { transform: translateY(-2px); }
 .add-plant-content { text-align: center; color: white; }
 .add-icon { font-size: 32px; display: block; margin-bottom: 8px; }
 .add-text { font-size: 14px; font-weight: 500; }
 
-/* --- 빠른 액션 --- */
+/* 빠른 액션 */
 .quick-actions { display: flex; gap: 12px; padding: 0 20px; margin-bottom: 24px; }
 .quick-action { flex: 1; background: white; border: none; border-radius: 12px; padding: 16px; display: flex; flex-direction: column; align-items: center; gap: 8px; cursor: pointer; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); transition: transform 0.2s, box-shadow 0.2s; }
 .quick-action:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
 .action-icon { font-size: 24px; }
 .action-text { font-size: 12px; font-weight: 500; color: #2c3e50; }
 
-/* --- 할 일 목록 --- */
+/* 할 일 목록 */
 .task-list { padding: 0 20px 32px; }
 .task-card { background: white; border-radius: 12px; padding: 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06); transition: opacity 0.3s; }
 .task-card.completed { opacity: 0.6; }
@@ -645,7 +792,7 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .no-tasks { text-align: center; padding: 40px 20px; color: #7f8c8d; }
 .no-tasks-icon { font-size: 48px; display: block; margin-bottom: 12px; }
 
-/* --- 병충해 분석 로딩 오버레이 --- */
+/* 병충해 분석 로딩 오버레이 */
 .analyzing-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 1000; display: flex; align-items: center; justify-content: center; }
 .analyzing-box { background: #ffffff; border-radius: 16px; padding: 24px 20px; width: 80%; max-width: 320px; text-align: center; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18); }
 .spinner { width: 36px; height: 36px; margin: 0 auto 12px; border-radius: 50%; border: 3px solid #cbd5c0; border-top-color: #4a6444; animation: spin 0.8s linear infinite; }
@@ -653,7 +800,7 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .analyzing-desc { font-size: 12px; color: #7f8c8d; line-height: 1.4; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
-/* --- 병충해 분석 결과 모달 --- */
+/* 병충해 분석 결과 모달 */
 .result-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.5); z-index: 1001; display: flex; align-items: center; justify-content: center; padding: 20px; }
 .result-modal { background: white; border-radius: 20px; width: 100%; max-width: 400px; max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2); }
 .result-header { display: flex; justify-content: space-between; align-items: center; padding: 20px; border-bottom: 1px solid #eee; position: sticky; top: 0; background: white; z-index: 10; }
