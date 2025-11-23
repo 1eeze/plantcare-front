@@ -74,6 +74,98 @@
         </div>
       </div>
 
+      <!-- 식물 종 정보 -->
+      <div v-if="plant.speciesData" class="species-info-card">
+        <h3 class="section-title">🌿 식물 종 정보</h3>
+        <div class="species-content">
+          <div class="species-name-section">
+            <span class="species-label">식물명</span>
+            <span class="species-name">{{ plant.speciesData.name || '정보 없음' }}</span>
+          </div>
+
+          <div v-if="plant.speciesData.data" class="species-description">
+            <span class="species-label">설명</span>
+            <p class="species-text">{{ plant.speciesData.data }}</p>
+          </div>
+
+          <!-- 적정 환경 범위 -->
+          <div v-if="plant.speciesData.sensor_data_range" class="optimal-range-section">
+            <h4 class="subsection-title">적정 환경 범위</h4>
+
+            <!-- 온도 -->
+            <div v-if="plant.speciesData.sensor_data_range.temp && plant.speciesData.sensor_data_range.temp.length > 0" class="range-card">
+              <div class="range-header">
+                <span class="range-icon">🌡️</span>
+                <span class="range-label">온도</span>
+              </div>
+              <div class="range-values">
+                <div class="range-item">
+                  <span class="range-key">최소</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.temp[0].min }}°C</span>
+                </div>
+                <div class="range-item best">
+                  <span class="range-key">최적</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.temp[0].best }}°C</span>
+                </div>
+                <div class="range-item">
+                  <span class="range-key">최대</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.temp[0].max }}°C</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 대기 습도 -->
+            <div v-if="plant.speciesData.sensor_data_range.humidity && plant.speciesData.sensor_data_range.humidity.length > 0" class="range-card">
+              <div class="range-header">
+                <span class="range-icon">💧</span>
+                <span class="range-label">대기 습도</span>
+              </div>
+              <div class="range-values">
+                <div class="range-item">
+                  <span class="range-key">최소</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.humidity[0].min }}%</span>
+                </div>
+                <div class="range-item best">
+                  <span class="range-key">최적</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.humidity[0].best }}%</span>
+                </div>
+                <div class="range-item">
+                  <span class="range-key">최대</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.humidity[0].max }}%</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- 토양 습도 -->
+            <div v-if="plant.speciesData.sensor_data_range.earth_humidity && plant.speciesData.sensor_data_range.earth_humidity.length > 0" class="range-card">
+              <div class="range-header">
+                <span class="range-icon">🌱</span>
+                <span class="range-label">토양 습도</span>
+              </div>
+              <div class="range-values">
+                <div class="range-item">
+                  <span class="range-key">최소</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.earth_humidity[0].min }}%</span>
+                </div>
+                <div class="range-item best">
+                  <span class="range-key">최적</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.earth_humidity[0].best }}%</span>
+                </div>
+                <div class="range-item">
+                  <span class="range-key">최대</span>
+                  <span class="range-value">{{ plant.speciesData.sensor_data_range.earth_humidity[0].max }}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 식물 종 정보 없음 -->
+      <div v-else class="no-species-info">
+        <p>🌿 이 식물의 종 정보가 등록되지 않았습니다</p>
+      </div>
+
       <!-- 센서 데이터 그래프 -->
       <div class="chart-section">
         <h3 class="section-title">센서 데이터 추이</h3>
@@ -260,10 +352,10 @@ const loadPlantData = async () => {
       return
     }
 
-    // 1단계: User_Plants에서 식물 정보 가져오기
+    // 1단계: User_Plants에서 식물 정보 가져오기 (plant_data_id 포함)
     const { data: plantData, error: plantError } = await supabase
       .from('User_Plants')
-      .select('id, name, locate, photos, created_at, updated_at')
+      .select('id, name, locate, photos, created_at, updated_at, plant_data_id')
       .eq('id', plantId)
       .eq('user_id', user.id)
       .single()
@@ -286,25 +378,47 @@ const loadPlantData = async () => {
       return
     }
 
-    // 2단계: sensor_data 테이블에서 센서 데이터 가져오기
-    console.log('5. sensor_data 테이블 조회 시작 - plant_id:', plantId)
+    // 2단계: plant_data_id가 있으면 plants_data에서 식물 정보 가져오기
+    let plantSpeciesData = null
+    if (plantData.plant_data_id) {
+      console.log('5. plants_data 조회 시작 - plant_data_id:', plantData.plant_data_id)
+      const { data: speciesData, error: speciesError } = await supabase
+        .from('plants_data')
+        .select('plant_data_id, name, sensor_data_range, data')
+        .eq('plant_data_id', plantData.plant_data_id)
+        .maybeSingle()
+
+      console.log('6. plants_data 응답:', speciesData)
+      console.log('7. plants_data 에러:', speciesError)
+
+      if (!speciesError && speciesData) {
+        plantSpeciesData = speciesData
+      } else if (speciesError && speciesError.code !== 'PGRST116') {
+        console.error('plants_data 조회 중 예상치 못한 오류:', speciesError)
+      } else if (!speciesData) {
+        console.log('plants_data에 해당 plant_data_id의 데이터가 없습니다')
+      }
+    }
+
+    // 3단계: sensor_data 테이블에서 센서 데이터 가져오기
+    console.log('8. sensor_data 테이블 조회 시작 - plant_id:', plantId)
     const { data: sensorDataRaw, error: sensorError } = await supabase
       .from('sensor_data')
       .select('humidity, temp, light, plant_id')
       .eq('plant_id', plantId)
       .single()
 
-    console.log('6. sensor_data 응답:', sensorDataRaw)
-    console.log('7. sensor_data 에러:', sensorError)
+    console.log('9. sensor_data 응답:', sensorDataRaw)
+    console.log('10. sensor_data 에러:', sensorError)
 
     if (sensorError) {
       console.error('센서 데이터 로드 실패:', sensorError)
     }
 
     if (sensorDataRaw) {
-      console.log('8. humidity 데이터:', sensorDataRaw.humidity)
-      console.log('9. temp 데이터:', sensorDataRaw.temp)
-      console.log('10. light 데이터:', sensorDataRaw.light)
+      console.log('11. humidity 데이터:', sensorDataRaw.humidity)
+      console.log('12. temp 데이터:', sensorDataRaw.temp)
+      console.log('13. light 데이터:', sensorDataRaw.light)
     }
 
     // 센서 데이터에서 최신 값 추출
@@ -312,9 +426,9 @@ const loadPlantData = async () => {
     const latestLight = sensorDataRaw?.light?.[0]?.value
     const latestTemp = sensorDataRaw?.temp?.[0]?.value
 
-    console.log('11. 최신 습도:', latestHumidity)
-    console.log('12. 최신 조도:', latestLight)
-    console.log('13. 최신 온도:', latestTemp)
+    console.log('14. 최신 습도:', latestHumidity)
+    console.log('15. 최신 조도:', latestLight)
+    console.log('16. 최신 온도:', latestTemp)
 
     // 식물 상태 계산
     let status = '상태 양호'
@@ -335,13 +449,15 @@ const loadPlantData = async () => {
       image: (plantData.photos && plantData.photos[0]?.url) || plantPic,
       created_at: plantData.created_at,
       updated_at: plantData.updated_at,
-      status: status
+      status: status,
+      speciesData: plantSpeciesData // plants_data 정보 추가
     }
 
     sensorData.value = sensorDataRaw
 
-    console.log('14. 로드된 식물 데이터:', plant.value)
-    console.log('15. 로드된 센서 데이터:', sensorData.value)
+    console.log('17. 로드된 식물 데이터:', plant.value)
+    console.log('18. 로드된 센서 데이터:', sensorData.value)
+    console.log('19. 식물 종 데이터:', plantSpeciesData)
 
   } catch (error) {
     console.error('데이터 로드 중 오류:', error)
@@ -1101,6 +1217,142 @@ onMounted(() => {
 
 .delete-btn:not(:disabled):hover {
   background: #ff3838;
+}
+
+/* 식물 종 정보 카드 */
+.species-info-card {
+  background: white;
+  margin: 16px 20px;
+  padding: 20px;
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.species-content {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.species-name-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.species-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.species-name {
+  font-size: 20px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.species-description {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.species-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #666;
+  white-space: pre-wrap;
+}
+
+.optimal-range-section {
+  margin-top: 8px;
+}
+
+.subsection-title {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.range-card {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.range-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.range-icon {
+  font-size: 20px;
+}
+
+.range-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.range-values {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.range-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 8px;
+  background: white;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+}
+
+.range-item.best {
+  border-color: #4caf50;
+  background: #e8f5e9;
+}
+
+.range-key {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.range-value {
+  font-size: 15px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.range-item.best .range-value {
+  color: #2e7d32;
+}
+
+/* 식물 종 정보 없음 */
+.no-species-info {
+  background: #f8f9fa;
+  margin: 16px 20px;
+  padding: 24px;
+  border-radius: 16px;
+  text-align: center;
+}
+
+.no-species-info p {
+  margin: 0;
+  font-size: 14px;
+  color: #7f8c8d;
 }
 
 @media (max-width: 480px) {

@@ -771,18 +771,25 @@ onMounted(async () => {
 .dialog-content {
   background: white;
   border-radius: 16px;
-  width: 100%;
-  max-width: 500px;
-  max-height: 80vh;
+  width: 90%;
+  max-width: 450px;
+  max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+@media (max-width: 480px) {
+  .dialog-content {
+    width: 95%;
+    max-width: 380px;
+  }
 }
 
 .dialog-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 24px;
+  padding: 18px 20px;
   border-bottom: 1px solid #eee;
 }
 
@@ -814,17 +821,18 @@ onMounted(async () => {
 }
 
 .dialog-body {
-  padding: 24px;
+  padding: 20px;
 }
 
 .dialog-input {
   width: 100%;
-  padding: 14px 16px;
+  padding: 12px 14px;
   border: 2px solid #e0e0e0;
   border-radius: 12px;
   font-size: 15px;
   transition: border-color 0.3s;
   margin-bottom: 16px;
+  box-sizing: border-box;
 }
 
 .dialog-input:focus {
@@ -904,7 +912,7 @@ onMounted(async () => {
 .dialog-footer {
   display: flex;
   gap: 12px;
-  padding: 20px 24px;
+  padding: 18px 20px;
   border-top: 1px solid #eee;
 }
 
