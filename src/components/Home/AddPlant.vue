@@ -48,14 +48,26 @@
       <h3>기본 정보</h3>
       <div class="form-group">
         <label for="plant-name">식물 이름</label>
-        <input 
-          id="plant-name"
-          v-model="plant.name" 
-          type="text" 
-          placeholder="예: 우리집 몬스테라"
-          class="text-input"
-        />
-        <small class="input-hint">식물에게 애칭을 지어주세요</small>
+        <div class="search-input-group">
+          <input
+            id="plant-name"
+            v-model="plant.name"
+            type="text"
+            placeholder="예: 우리집 몬스테라"
+            class="text-input"
+            :disabled="searchingPlant"
+          />
+          <button
+            @click="searchPlantInfo"
+            class="search-icon-btn"
+            :disabled="!plant.name.trim() || searchingPlant"
+            title="식물 정보 검색"
+          >
+            <span v-if="searchingPlant" class="spinner-small"></span>
+            <span v-else>🔍</span>
+          </button>
+        </div>
+        <small class="input-hint">식물에게 애칭을 지어주세요. 검색 버튼으로 식물 정보를 확인할 수 있습니다.</small>
       </div>
 
       <div class="form-group">
@@ -213,6 +225,8 @@ const openCamera = () => {
 const sensorConnected = ref(false)
 const connecting = ref(false)
 const saving = ref(false)
+const searchingPlant = ref(false)
+const plantDataId = ref(null)
 
 const sensorData = ref({
   soilMoisture: 0,
@@ -273,6 +287,84 @@ const getSensorStatus = (type) => {
 const getSensorStatusText = (type) => {
   const status = getSensorStatus(type)
   return status === 'good' ? '적정' : status === 'high' ? '높음' : '낮음'
+}
+
+// 식물 정보 검색
+const searchPlantInfo = async () => {
+  if (!plant.value.name.trim()) return
+
+  searchingPlant.value = true
+  plantDataId.value = null
+
+  try {
+    // 공백과 특수문자 제거
+    const plantName = plant.value.name.replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣]/g, '')
+
+    console.log('식물 검색 시작:', plantName)
+
+    // Trefle API 호출
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30초 타임아웃
+
+    const response = await fetch(
+      'https://knupbxftazopklvjionb.supabase.co/functions/v1/trefle-api',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token || ''}`
+        },
+        body: JSON.stringify({
+          plant: plantName
+        }),
+        signal: controller.signal
+      }
+    )
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('식물 검색 결과:', data)
+
+    // 응답 구조 처리
+    let result = null
+    if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+      result = data.results[0]
+    } else if (data.plant_data_id) {
+      result = data
+    }
+
+    // plant_data_id 저장
+    if (result && result.plant_data_id) {
+      plantDataId.value = result.plant_data_id
+
+      const infoPreview = result.information
+        ? result.information.substring(0, 150) + '...'
+        : '설명 없음'
+
+      alert(`✅ 식물 정보를 찾았습니다!\n\n${result.name_ko}\n\n${infoPreview}\n\n등록 시 이 정보가 자동으로 연결됩니다.`)
+    } else {
+      alert('⚠️ 식물 정보를 찾을 수 없습니다.')
+    }
+
+  } catch (err) {
+    console.error('식물 검색 실패:', err)
+
+    if (err.name === 'AbortError') {
+      alert('⏱️ 검색 시간이 초과되었습니다. 다시 시도해주세요.')
+    } else {
+      alert(`❌ 식물 검색 중 오류가 발생했습니다.\n${err.message}`)
+    }
+  } finally {
+    searchingPlant.value = false
+  }
 }
 
 // 저장 가능 여부
@@ -348,14 +440,23 @@ const savePlant = async () => {
     const publicUrl = urlData.publicUrl
 
     // (E) DB insert (RLS 대비 user_id 등 컬럼 포함: 스키마에 맞춰 조정)
+    const insertPayload = {
+      user_id: user?.id,                     // ← RLS가 auth.uid() 요구시 중요 (null 제거)
+      name: plant.value.name,
+      locate: plant.value.location,
+      photos: [{ url: publicUrl, is_main: true }],
+    }
+
+    // plant_data_id가 있으면 category에 추가
+    if (plantDataId.value) {
+      insertPayload.category = plantDataId.value
+      console.log('식물 데이터 ID 연결:', plantDataId.value)
+    }
+
     const { error: insertError } = await supabase
       .from('User_Plants')
-      .insert({
-        user_id: user?.id,                     // ← RLS가 auth.uid() 요구시 중요 (null 제거)
-        name: plant.value.name,
-        locate: plant.value.location,
-        photos: [{ url: publicUrl, is_main: true }],
-      })
+      .insert(insertPayload)
+
     if (insertError) {
       console.error('DB Insert Error 상세:', {
         message: insertError.message,
@@ -505,6 +606,55 @@ onMounted(async () => {
 
 .form-group {
   margin-bottom: 20px;
+}
+
+.search-input-group {
+  position: relative;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.search-input-group .text-input {
+  flex: 1;
+}
+
+.search-icon-btn {
+  padding: 12px 16px;
+  background: #568265;
+  color: white;
+  border: none;
+  border-radius: 10px;
+  font-size: 18px;
+  cursor: pointer;
+  transition: all 0.3s;
+  min-width: 50px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-icon-btn:hover:not(:disabled) {
+  background: #4a7058;
+  transform: scale(1.05);
+}
+
+.search-icon-btn:disabled {
+  background: #cbd5c0;
+  cursor: not-allowed;
+}
+
+.spinner-small {
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .form-group label {

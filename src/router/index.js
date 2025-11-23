@@ -7,9 +7,10 @@ import SignupStep2 from '@/components/Signup/SignupStep2.vue'
 import SignupStep3 from '@/components/Signup/SignupStep3.vue'
 import SignupComplete from '@/components/Signup/SignupComplete.vue'
 import MainLayout from '@/components/MainLayout.vue'
-import HomePage from '@/components/Home/HomePage.vue' 
+import HomePage from '@/components/Home/HomePage.vue'
 import PlantDetail from '@/components/Home/PlantDetail.vue'
 import AddPlant from '@/components/Home/AddPlant.vue'
+import PlantSearch from '@/components/Home/PlantSearch.vue'
 import Notification from '@/components/Home/Notification.vue'
 import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
 import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
@@ -39,16 +40,22 @@ const routes = [
         component: PlantDetail, 
         props: true 
       },
-      { 
-        path: 'add-plant', 
+      {
+        path: 'add-plant',
         name: 'AddPlant',
         component: AddPlant,
-        meta: { requiresAuth: true, showBottomNav: true } 
+        meta: { requiresAuth: true, showBottomNav: true }
       },
-      { 
-        path: 'notification', 
+      {
+        path: 'plant-search',
+        name: 'PlantSearch',
+        component: PlantSearch,
+        meta: { requiresAuth: true, showBottomNav: true }
+      },
+      {
+        path: 'notification',
         name: 'Notification',
-        component: Notification 
+        component: Notification
       },
       { 
         path: 'marketprice', 

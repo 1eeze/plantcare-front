@@ -24,6 +24,7 @@ import homeIcon from '@/assets/icons/home.png'
 import uptrendIcon from '@/assets/icons/uptrend.png'
 import communityIcon from '@/assets/icons/community.png'
 import profileIcon from '@/assets/icons/profile.png'
+import plantIcon from '@/assets/icons/plant.png'
 
 export default {
   name: 'BottomNav',
@@ -44,12 +45,12 @@ export default {
         alt: '홈',
         label: '홈'
       },
-      /* {
-        path: '/unkown',
-        icon: '/src/assets/icons/plant.png',
-        alt: '식물',
-        label: '식물'
-      }, */
+      {
+        path: '/plant-search',
+        icon: plantIcon,
+        alt: '식물검색',
+        label: '식물검색'
+      },
       {
         path: '/marketprice',
         icon: uptrendIcon,
