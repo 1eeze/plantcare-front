@@ -47,39 +47,113 @@
     <div class="plant-info-section">
       <h3>기본 정보</h3>
       <div class="form-group">
-        <label for="plant-name">식물 이름</label>
+        <label for="plant-name">내 식물 이름</label>
+        <input
+          id="plant-name"
+          v-model="plant.name"
+          type="text"
+          placeholder="예: 우리집 몬스테라"
+          class="text-input"
+        />
+        <small class="input-hint">식물에게 애칭을 지어주세요</small>
+      </div>
+
+      <div class="form-group">
+        <label for="plant-species">식물 종류</label>
         <div class="search-input-group">
           <input
-            id="plant-name"
-            v-model="plant.name"
+            id="plant-species"
+            v-model="plantSpecies"
             type="text"
-            placeholder="예: 우리집 몬스테라"
+            placeholder="예: 몬스테라, 스킨답서스"
             class="text-input"
             :disabled="searchingPlant"
+            readonly
+            @click="showSearchDialog = true"
           />
           <button
-            @click="searchPlantInfo"
+            @click="showSearchDialog = true"
             class="search-icon-btn"
-            :disabled="!plant.name.trim() || searchingPlant"
-            title="식물 정보 검색"
+            :disabled="searchingPlant"
+            title="식물 종류 검색"
           >
             <span v-if="searchingPlant" class="spinner-small"></span>
             <span v-else>🔍</span>
           </button>
         </div>
-        <small class="input-hint">식물에게 애칭을 지어주세요. 검색 버튼으로 식물 정보를 확인할 수 있습니다.</small>
+        <small class="input-hint">검색 버튼을 눌러 식물 종류를 찾아보세요</small>
+        <div v-if="plantDataId" class="species-info">
+          ✅ 식물 정보가 연결되었습니다
+        </div>
       </div>
 
       <div class="form-group">
         <label for="plant-location">위치</label>
-        <input 
+        <input
           id="plant-location"
-          v-model="plant.location" 
-          type="text" 
+          v-model="plant.location"
+          type="text"
           placeholder="예: 거실 창가, 침실"
           class="text-input"
         />
         <small class="input-hint">어디에 두실 예정인가요?</small>
+      </div>
+    </div>
+
+    <!-- 식물 검색 다이얼로그 -->
+    <div v-if="showSearchDialog" class="dialog-overlay" @click.self="closeSearchDialog">
+      <div class="dialog-content">
+        <div class="dialog-header">
+          <h3>식물 종류 검색</h3>
+          <button @click="closeSearchDialog" class="dialog-close">✕</button>
+        </div>
+
+        <div class="dialog-body">
+          <div class="dialog-input-group">
+            <input
+              v-model="searchInput"
+              type="text"
+              placeholder="식물 종류를 입력하세요 (예: 몬스테라)"
+              class="dialog-input"
+              @keyup.enter="performSearch"
+              :disabled="searchingPlant"
+            />
+          </div>
+
+          <div v-if="searchingPlant" class="dialog-loading">
+            <div class="spinner-large"></div>
+            <p>식물 정보를 검색하는 중...</p>
+            <small>최대 30초 정도 소요될 수 있습니다</small>
+          </div>
+
+          <div v-else-if="searchResult" class="dialog-result">
+            <h4>{{ searchResult.name_ko }}</h4>
+            <div class="result-info">
+              <p>{{ searchResult.information ? searchResult.information.substring(0, 200) + '...' : '정보가 없습니다' }}</p>
+            </div>
+            <div class="result-actions">
+              <button @click="selectPlantSpecies" class="btn-primary">
+                이 식물로 선택
+              </button>
+              <button @click="clearSearchResult" class="btn-secondary">
+                다시 검색
+              </button>
+            </div>
+          </div>
+
+          <div v-else-if="searchError" class="dialog-error">
+            <p>⚠️ {{ searchError }}</p>
+            <button @click="clearSearchResult" class="btn-secondary">
+              다시 시도
+            </button>
+          </div>
+        </div>
+
+        <div class="dialog-footer">
+          <button @click="performSearch" class="btn-search" :disabled="!searchInput.trim() || searchingPlant">
+            🔍 검색하기
+          </button>
+        </div>
       </div>
     </div>
 
@@ -227,6 +301,11 @@ const connecting = ref(false)
 const saving = ref(false)
 const searchingPlant = ref(false)
 const plantDataId = ref(null)
+const plantSpecies = ref('')
+const showSearchDialog = ref(false)
+const searchInput = ref('')
+const searchResult = ref(null)
+const searchError = ref(null)
 
 const sensorData = ref({
   soilMoisture: 0,
@@ -289,16 +368,33 @@ const getSensorStatusText = (type) => {
   return status === 'good' ? '적정' : status === 'high' ? '높음' : '낮음'
 }
 
-// 식물 정보 검색
-const searchPlantInfo = async () => {
-  if (!plant.value.name.trim()) return
+// 다이얼로그 닫기
+const closeSearchDialog = () => {
+  if (!searchingPlant.value) {
+    showSearchDialog.value = false
+    searchInput.value = ''
+    searchResult.value = null
+    searchError.value = null
+  }
+}
+
+// 검색 결과 초기화
+const clearSearchResult = () => {
+  searchResult.value = null
+  searchError.value = null
+}
+
+// 식물 검색 실행
+const performSearch = async () => {
+  if (!searchInput.value.trim()) return
 
   searchingPlant.value = true
-  plantDataId.value = null
+  searchError.value = null
+  searchResult.value = null
 
   try {
     // 공백과 특수문자 제거
-    const plantName = plant.value.name.replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣]/g, '')
+    const plantName = searchInput.value.replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣]/g, '')
 
     console.log('식물 검색 시작:', plantName)
 
@@ -334,36 +430,36 @@ const searchPlantInfo = async () => {
     console.log('식물 검색 결과:', data)
 
     // 응답 구조 처리
-    let result = null
     if (data.results && Array.isArray(data.results) && data.results.length > 0) {
-      result = data.results[0]
+      searchResult.value = data.results[0]
     } else if (data.plant_data_id) {
-      result = data
-    }
-
-    // plant_data_id 저장
-    if (result && result.plant_data_id) {
-      plantDataId.value = result.plant_data_id
-
-      const infoPreview = result.information
-        ? result.information.substring(0, 150) + '...'
-        : '설명 없음'
-
-      alert(`✅ 식물 정보를 찾았습니다!\n\n${result.name_ko}\n\n${infoPreview}\n\n등록 시 이 정보가 자동으로 연결됩니다.`)
+      searchResult.value = data
     } else {
-      alert('⚠️ 식물 정보를 찾을 수 없습니다.')
+      searchError.value = '검색 결과가 없습니다. 다른 이름으로 시도해보세요.'
     }
 
   } catch (err) {
     console.error('식물 검색 실패:', err)
 
     if (err.name === 'AbortError') {
-      alert('⏱️ 검색 시간이 초과되었습니다. 다시 시도해주세요.')
+      searchError.value = '검색 시간이 초과되었습니다. 다시 시도해주세요.'
     } else {
-      alert(`❌ 식물 검색 중 오류가 발생했습니다.\n${err.message}`)
+      searchError.value = `검색 중 오류가 발생했습니다: ${err.message}`
     }
   } finally {
     searchingPlant.value = false
+  }
+}
+
+// 식물 종류 선택
+const selectPlantSpecies = () => {
+  if (searchResult.value) {
+    plantSpecies.value = searchResult.value.name_ko
+    plantDataId.value = searchResult.value.plant_data_id
+    showSearchDialog.value = false
+    searchInput.value = ''
+    searchResult.value = null
+    searchError.value = null
   }
 }
 
@@ -441,15 +537,15 @@ const savePlant = async () => {
 
     // (E) DB insert (RLS 대비 user_id 등 컬럼 포함: 스키마에 맞춰 조정)
     const insertPayload = {
-      user_id: user?.id,                     // ← RLS가 auth.uid() 요구시 중요 (null 제거)
+      user_id: user?.id,
       name: plant.value.name,
       locate: plant.value.location,
       photos: [{ url: publicUrl, is_main: true }],
     }
 
-    // plant_data_id가 있으면 category에 추가
+    // plant_data_id가 있으면 추가
     if (plantDataId.value) {
-      insertPayload.category = plantDataId.value
+      insertPayload.plant_data_id = plantDataId.value
       console.log('식물 데이터 ID 연결:', plantDataId.value)
     }
 
@@ -655,6 +751,235 @@ onMounted(async () => {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* 다이얼로그 스타일 */
+.dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+  padding: 20px;
+}
+
+.dialog-content {
+  background: white;
+  border-radius: 16px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+}
+
+.dialog-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #eee;
+}
+
+.dialog-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.dialog-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #666;
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+}
+
+.dialog-close-btn:hover {
+  background-color: #f0f0f0;
+}
+
+.dialog-body {
+  padding: 24px;
+}
+
+.dialog-input {
+  width: 100%;
+  padding: 14px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  font-size: 15px;
+  transition: border-color 0.3s;
+  margin-bottom: 16px;
+}
+
+.dialog-input:focus {
+  outline: none;
+  border-color: #568265;
+}
+
+.dialog-input:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.dialog-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+  gap: 16px;
+}
+
+.spinner-large {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #cbd5c0;
+  border-top-color: #568265;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.dialog-loading-text {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.dialog-loading-subtext {
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.dialog-result {
+  background: #f8f9fa;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.dialog-result h4 {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.dialog-result p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #666;
+  white-space: pre-wrap;
+}
+
+.dialog-error {
+  padding: 20px;
+  text-align: center;
+  color: #d32f2f;
+}
+
+.dialog-error p {
+  margin: 0;
+  font-size: 14px;
+}
+
+.dialog-footer {
+  display: flex;
+  gap: 12px;
+  padding: 20px 24px;
+  border-top: 1px solid #eee;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-search {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+  flex: 1;
+}
+
+.btn-primary {
+  background: #568265;
+  color: white;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #4a7058;
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled {
+  background: #cbd5c0;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  background: #f0f0f0;
+  color: #666;
+}
+
+.btn-secondary:hover {
+  background: #e0e0e0;
+}
+
+.btn-search {
+  background: #568265;
+  color: white;
+  width: 100%;
+}
+
+.btn-search:hover:not(:disabled) {
+  background: #4a7058;
+  transform: translateY(-1px);
+}
+
+.btn-search:disabled {
+  background: #cbd5c0;
+  cursor: not-allowed;
+}
+
+.species-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background: #e8f5e9;
+  border: 1px solid #4caf50;
+  border-radius: 10px;
+  margin-top: 8px;
+}
+
+.species-info span:first-child {
+  font-size: 18px;
+}
+
+.species-info span:last-child {
+  color: #2e7d32;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .form-group label {
