@@ -166,6 +166,112 @@
         <p>🌿 이 식물의 종 정보가 등록되지 않았습니다</p>
       </div>
 
+      <!-- AI 분석 결과 모달 -->
+      <div v-if="aiAnalysisResult" class="analysis-modal-overlay" @click="closeAnalysis">
+        <div class="analysis-modal-content" @click.stop>
+          <div class="analysis-modal-header">
+            <h3 class="analysis-modal-title">🔬 AI 분석 결과</h3>
+            <button @click="closeAnalysis" class="close-modal-btn">✕</button>
+          </div>
+          
+          <div class="analysis-modal-body">
+            <!-- 식물 이름 -->
+            <div class="analysis-section">
+              <h4 class="analysis-subtitle">식물 정보</h4>
+              <p class="analysis-plant-name">{{ aiAnalysisResult.name_ko || '정보 없음' }}</p>
+              <span v-if="aiAnalysisResult.from" class="analysis-badge">
+                {{ aiAnalysisResult.from === 'external' ? '외부 API' : 'DB' }}
+              </span>
+            </div>
+
+            <!-- 식물 설명 -->
+            <div v-if="aiAnalysisResult.information" class="analysis-section">
+              <h4 class="analysis-subtitle">📝 설명</h4>
+              <p class="analysis-text">{{ aiAnalysisResult.information }}</p>
+            </div>
+
+            <!-- 센서 데이터 범위 비교 -->
+            <div v-if="aiAnalysisResult.sensor_data_range" class="analysis-section">
+              <h4 class="analysis-subtitle">🌡️ 현재 환경 vs 적정 환경</h4>
+              
+              <!-- 온도 비교 -->
+              <div v-if="aiAnalysisResult.sensor_data_range.temp && aiAnalysisResult.sensor_data_range.temp.length > 0" 
+                   class="comparison-card">
+                <div class="comparison-header">
+                  <span class="comparison-icon">🌡️</span>
+                  <span class="comparison-label">온도</span>
+                </div>
+                <div class="comparison-content">
+                  <div class="current-value">
+                    <span class="label">현재</span>
+                    <span class="value" :class="getComparisonClass('temp', currentSensorValues.temp, aiAnalysisResult.sensor_data_range.temp[0])">
+                      {{ currentSensorValues.temp?.toFixed(1) ?? '-' }}°C
+                    </span>
+                  </div>
+                  <div class="optimal-range">
+                    <span class="label">적정 범위</span>
+                    <span class="range-text">
+                      {{ aiAnalysisResult.sensor_data_range.temp[0].min }}°C ~ 
+                      {{ aiAnalysisResult.sensor_data_range.temp[0].max }}°C
+                      (최적: {{ aiAnalysisResult.sensor_data_range.temp[0].best }}°C)
+                    </span>
+                  </div>
+                </div>
+                <div v-if="getEnvironmentAdvice('temp', currentSensorValues.temp, aiAnalysisResult.sensor_data_range.temp[0])" 
+                     class="advice">
+                  {{ getEnvironmentAdvice('temp', currentSensorValues.temp, aiAnalysisResult.sensor_data_range.temp[0]) }}
+                </div>
+              </div>
+
+              <!-- 대기 습도 비교 -->
+              <div v-if="aiAnalysisResult.sensor_data_range.humidity && aiAnalysisResult.sensor_data_range.humidity.length > 0" 
+                   class="comparison-card">
+                <div class="comparison-header">
+                  <span class="comparison-icon">💧</span>
+                  <span class="comparison-label">대기 습도</span>
+                </div>
+                <div class="comparison-content">
+                  <div class="current-value">
+                    <span class="label">현재</span>
+                    <span class="value" :class="getComparisonClass('humidity', currentSensorValues.humidity, aiAnalysisResult.sensor_data_range.humidity[0])">
+                      {{ currentSensorValues.humidity?.toFixed(1) ?? '-' }}%
+                    </span>
+                  </div>
+                  <div class="optimal-range">
+                    <span class="label">적정 범위</span>
+                    <span class="range-text">
+                      {{ aiAnalysisResult.sensor_data_range.humidity[0].min }}% ~ 
+                      {{ aiAnalysisResult.sensor_data_range.humidity[0].max }}%
+                      (최적: {{ aiAnalysisResult.sensor_data_range.humidity[0].best }}%)
+                    </span>
+                  </div>
+                </div>
+                <div v-if="getEnvironmentAdvice('humidity', currentSensorValues.humidity, aiAnalysisResult.sensor_data_range.humidity[0])" 
+                     class="advice">
+                  {{ getEnvironmentAdvice('humidity', currentSensorValues.humidity, aiAnalysisResult.sensor_data_range.humidity[0]) }}
+                </div>
+              </div>
+            </div>
+
+            <!-- 종합 조언 -->
+            <div class="analysis-section summary">
+              <h4 class="analysis-subtitle">💡 관리 조언</h4>
+              <div class="advice-list">
+                <p v-for="(advice, index) in getOverallAdvice()" :key="index" class="advice-item">
+                  {{ advice }}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="analysis-modal-footer">
+            <button @click="closeAnalysis" class="close-btn-large">
+              확인
+            </button>
+          </div>
+        </div>
+      </div>
+
       <!-- 센서 데이터 그래프 -->
       <div class="chart-section">
         <h3 class="section-title">센서 데이터 추이</h3>
@@ -218,9 +324,9 @@
             <span class="action-icon">💧</span>
             <span class="action-text">물주기</span>
           </button>
-          <button class="care-action-btn" @click="analyzePlant">
-            <span class="action-icon">🔬</span>
-            <span class="action-text">AI 분석</span>
+          <button class="care-action-btn" @click="analyzePlant" :disabled="analyzing">
+            <span class="action-icon">{{ analyzing ? '🔄' : '🔬' }}</span>
+            <span class="action-text">{{ analyzing ? '분석 중...' : 'AI 분석' }}</span>
           </button>
           <button class="care-action-btn" @click="editPlant">
             <span class="action-icon">✏️</span>
@@ -336,13 +442,17 @@ const loading = ref(true)
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
 
+// AI 분석 관련 상태
+const analyzing = ref(false)
+const aiAnalysisResult = ref(null)
+
 // 최근 관리 기록
 const recentHistory = ref([
   { id: 1, action: '물주기 완료', icon: '💧', date: new Date().toISOString() },
   { id: 2, action: 'AI 분석 완료', icon: '🔬', date: new Date(Date.now() - 86400000).toISOString() },
 ])
 
-// 센서 데이터 로드 (첫 번째 코드 로직)
+// 센서 데이터 로드
 const loadPlantData = async () => {
   loading.value = true
   try {
@@ -352,7 +462,7 @@ const loadPlantData = async () => {
       return
     }
 
-    // 1단계: User_Plants에서 식물 정보 가져오기 (plant_data_id 포함)
+    // 1단계: User_Plants에서 식물 정보 가져오기
     const { data: plantData, error: plantError } = await supabase
       .from('User_Plants')
       .select('id, name, locate, photos, created_at, updated_at, plant_data_id')
@@ -430,16 +540,43 @@ const loadPlantData = async () => {
     console.log('15. 최신 조도:', latestLight)
     console.log('16. 최신 온도:', latestTemp)
 
-    // 식물 상태 계산
+    // 식물 상태 계산 (LLM 기반 또는 기본값)
     let status = '상태 양호'
-    if (latestHumidity !== undefined && latestHumidity < 30) {
-      status = '물 부족'
-    } else if (latestLight !== undefined && latestLight < 40) {
-      status = '빛 부족'
-    } else if (latestTemp !== undefined && latestTemp < 15) {
-      status = '온도 낮음'
-    } else if (latestTemp !== undefined && latestTemp > 30) {
-      status = '온도 높음'
+    
+    // plantSpeciesData가 있으면 해당 식물의 적정 범위로 판단
+    if (plantSpeciesData?.sensor_data_range) {
+      const ranges = plantSpeciesData.sensor_data_range
+      
+      // 온도 체크
+      if (ranges.temp && ranges.temp.length > 0 && latestTemp !== undefined) {
+        const tempRange = ranges.temp[0]
+        if (latestTemp < tempRange.min) {
+          status = '온도 낮음'
+        } else if (latestTemp > tempRange.max) {
+          status = '온도 높음'
+        }
+      }
+      
+      // 습도 체크
+      if (ranges.humidity && ranges.humidity.length > 0 && latestHumidity !== undefined) {
+        const humidityRange = ranges.humidity[0]
+        if (latestHumidity < humidityRange.min) {
+          status = '습도 부족'
+        } else if (latestHumidity > humidityRange.max) {
+          status = '습도 과다'
+        }
+      }
+    } else {
+      // plantSpeciesData가 없으면 기본 기준으로 판단 (fallback)
+      if (latestHumidity !== undefined && latestHumidity < 30) {
+        status = '물 부족'
+      } else if (latestLight !== undefined && latestLight < 40) {
+        status = '빛 부족'
+      } else if (latestTemp !== undefined && latestTemp < 15) {
+        status = '온도 낮음'
+      } else if (latestTemp !== undefined && latestTemp > 30) {
+        status = '온도 높음'
+      }
     }
 
     plant.value = {
@@ -450,7 +587,7 @@ const loadPlantData = async () => {
       created_at: plantData.created_at,
       updated_at: plantData.updated_at,
       status: status,
-      speciesData: plantSpeciesData // plants_data 정보 추가
+      speciesData: plantSpeciesData
     }
 
     sensorData.value = sensorDataRaw
@@ -464,6 +601,162 @@ const loadPlantData = async () => {
   } finally {
     loading.value = false
   }
+}
+
+// AI 분석 함수 (Trefle API 호출)
+const analyzePlant = async () => {
+  if (analyzing.value) return
+  if (!plant.value?.name) {
+    alert('❌ 식물 이름이 없어 분석할 수 없습니다.')
+    return
+  }
+
+  analyzing.value = true
+  aiAnalysisResult.value = null
+
+  try {
+    // 공백과 특수문자 제거
+    const plantName = plant.value.name.replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣]/g, '')
+
+    console.log('🔬 AI 분석 시작:', plantName)
+
+    // Trefle API 호출
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30초 타임아웃
+
+    const response = await fetch(
+      'https://knupbxftazopklvjionb.supabase.co/functions/v1/trefle-api',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token || ''}`
+        },
+        body: JSON.stringify({
+          plant: plantName
+        }),
+        signal: controller.signal
+      }
+    )
+
+    clearTimeout(timeoutId)
+
+    if (!response.ok) {
+      throw new Error(`API 오류: ${response.status} ${response.statusText}`)
+    }
+
+    const data = await response.json()
+    console.log('🔬 분석 결과:', data)
+
+    // 응답 처리
+    if (data.results && Array.isArray(data.results) && data.results.length > 0) {
+      aiAnalysisResult.value = data.results[0]
+    } else if (data.plant_data_id) {
+      aiAnalysisResult.value = data
+    } else {
+      alert('❌ 해당 식물에 대한 정보를 찾을 수 없습니다.')
+    }
+
+  } catch (err) {
+    console.error('AI 분석 실패:', err)
+
+    if (err.name === 'AbortError') {
+      alert('⏱️ 분석 시간이 초과되었습니다. 다시 시도해주세요.')
+    } else {
+      alert(`❌ 분석 중 오류가 발생했습니다: ${err.message}`)
+    }
+  } finally {
+    analyzing.value = false
+  }
+}
+
+// AI 분석 결과 닫기
+const closeAnalysis = () => {
+  aiAnalysisResult.value = null
+}
+
+// 현재 값과 적정 범위 비교
+const getComparisonClass = (type, currentValue, range) => {
+  if (currentValue === null || !range) return ''
+  
+  if (currentValue < range.min || currentValue > range.max) {
+    return 'status-danger'
+  } else if (Math.abs(currentValue - range.best) <= (range.max - range.min) * 0.2) {
+    return 'status-good'
+  } else {
+    return 'status-warning'
+  }
+}
+
+// 환경 조언 생성
+const getEnvironmentAdvice = (type, currentValue, range) => {
+  if (currentValue === null || !range) return ''
+  
+  if (type === 'temp') {
+    if (currentValue < range.min) {
+      return `⚠️ 현재 온도가 너무 낮습니다. 최소 ${range.min}°C 이상으로 유지해주세요.`
+    } else if (currentValue > range.max) {
+      return `⚠️ 현재 온도가 너무 높습니다. 최대 ${range.max}°C 이하로 유지해주세요.`
+    } else if (Math.abs(currentValue - range.best) > (range.max - range.min) * 0.3) {
+      return `💡 온도를 ${range.best}°C에 가깝게 유지하면 더 좋습니다.`
+    } else {
+      return '✅ 적정 온도를 유지하고 있습니다.'
+    }
+  } else if (type === 'humidity') {
+    if (currentValue < range.min) {
+      return `⚠️ 현재 습도가 너무 낮습니다. 최소 ${range.min}% 이상으로 유지해주세요.`
+    } else if (currentValue > range.max) {
+      return `⚠️ 현재 습도가 너무 높습니다. 최대 ${range.max}% 이하로 유지해주세요.`
+    } else if (Math.abs(currentValue - range.best) > (range.max - range.min) * 0.3) {
+      return `💡 습도를 ${range.best}%에 가깝게 유지하면 더 좋습니다.`
+    } else {
+      return '✅ 적정 습도를 유지하고 있습니다.'
+    }
+  }
+  
+  return ''
+}
+
+// 종합 조언 생성
+const getOverallAdvice = () => {
+  const advices = []
+  
+  if (!aiAnalysisResult.value?.sensor_data_range) {
+    advices.push('센서 데이터 범위 정보가 없습니다.')
+    return advices
+  }
+  
+  const { temp, humidity } = aiAnalysisResult.value.sensor_data_range
+  const current = currentSensorValues.value
+  
+  // 온도 조언
+  if (temp && temp.length > 0 && current.temp !== null) {
+    if (current.temp < temp[0].min) {
+      advices.push('🌡️ 따뜻한 곳으로 이동시키거나 난방을 강화하세요.')
+    } else if (current.temp > temp[0].max) {
+      advices.push('🌡️ 서늘한 곳으로 이동시키거나 환기를 해주세요.')
+    }
+  }
+  
+  // 습도 조언
+  if (humidity && humidity.length > 0 && current.humidity !== null) {
+    if (current.humidity < humidity[0].min) {
+      advices.push('💧 분무기로 물을 뿌려주거나 가습기를 사용하세요.')
+    } else if (current.humidity > humidity[0].max) {
+      advices.push('💧 환기를 자주 해주고 과습에 주의하세요.')
+    }
+  }
+  
+  // 전반적인 상태가 좋을 때
+  if (advices.length === 0) {
+    advices.push('✅ 현재 환경이 이 식물에게 적합합니다. 계속 잘 관리해주세요!')
+    advices.push('💡 정기적으로 센서 데이터를 확인하여 환경 변화에 대응하세요.')
+  }
+  
+  return advices
 }
 
 // 현재 센서 값 (최신 데이터)
@@ -598,10 +891,31 @@ const formatDateTime = (dateString) => {
   return date.toLocaleString('ko-KR', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 }
 
-// 센서 상태 클래스
+// 센서 상태 클래스 (LLM 기반 동적 판단)
 const getSensorStatusClass = (type, value) => {
   if (value === null) return 'status-unknown'
-
+  
+  // plant.speciesData가 있으면 해당 식물의 적정 범위 사용
+  if (plant.value?.speciesData?.sensor_data_range) {
+    const ranges = plant.value.speciesData.sensor_data_range
+    
+    if (type === 'humidity' && ranges.humidity && ranges.humidity.length > 0) {
+      const range = ranges.humidity[0]
+      if (value < range.min || value > range.max) return 'status-danger'
+      // 최적값 기준 ±20% 범위 내면 good, 아니면 warning
+      const tolerance = (range.max - range.min) * 0.3
+      if (Math.abs(value - range.best) <= tolerance) return 'status-good'
+      return 'status-warning'
+    } else if (type === 'temp' && ranges.temp && ranges.temp.length > 0) {
+      const range = ranges.temp[0]
+      if (value < range.min || value > range.max) return 'status-danger'
+      const tolerance = (range.max - range.min) * 0.3
+      if (Math.abs(value - range.best) <= tolerance) return 'status-good'
+      return 'status-warning'
+    }
+  }
+  
+  // plant.speciesData가 없으면 기본값 사용 (fallback)
   if (type === 'humidity') {
     if (value < 30) return 'status-danger'
     if (value < 50) return 'status-warning'
@@ -621,7 +935,29 @@ const getSensorStatusClass = (type, value) => {
 
 const getSensorStatusText = (type, value) => {
   if (value === null) return '데이터 없음'
+  
+  // plant.speciesData가 있으면 해당 식물의 적정 범위 기반 텍스트
+  if (plant.value?.speciesData?.sensor_data_range) {
+    const ranges = plant.value.speciesData.sensor_data_range
+    
+    if (type === 'humidity' && ranges.humidity && ranges.humidity.length > 0) {
+      const range = ranges.humidity[0]
+      if (value < range.min) return '너무 건조'
+      if (value > range.max) return '과습'
+      const tolerance = (range.max - range.min) * 0.3
+      if (Math.abs(value - range.best) <= tolerance) return '최적'
+      return '적정'
+    } else if (type === 'temp' && ranges.temp && ranges.temp.length > 0) {
+      const range = ranges.temp[0]
+      if (value < range.min) return '너무 추움'
+      if (value > range.max) return '너무 더움'
+      const tolerance = (range.max - range.min) * 0.3
+      if (Math.abs(value - range.best) <= tolerance) return '최적'
+      return '적정'
+    }
+  }
 
+  // fallback: 기본 텍스트
   if (type === 'humidity') {
     if (value < 30) return '매우 건조'
     if (value < 50) return '건조'
@@ -682,15 +1018,11 @@ const deletePlant = async () => {
 
 // 액션 함수들
 const goBack = () => {
-  router.back()
+  router.push('/')
 }
 
 const waterPlant = () => {
   alert('💧 물주기 기능은 개발 중입니다!')
-}
-
-const analyzePlant = () => {
-  alert('🔬 AI 분석 기능은 개발 중입니다!')
 }
 
 const editPlant = () => {
@@ -925,6 +1257,284 @@ onMounted(() => {
   color: #666;
 }
 
+/* AI 분석 모달 */
+.analysis-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.analysis-modal-content {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  border-radius: 20px;
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.analysis-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 24px 24px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.analysis-modal-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+}
+
+.close-modal-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s;
+}
+
+.close-modal-btn:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+.analysis-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 스크롤바 스타일링 */
+.analysis-modal-body::-webkit-scrollbar {
+  width: 8px;
+}
+
+.analysis-modal-body::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+}
+
+.analysis-modal-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.3);
+  border-radius: 10px;
+}
+
+.analysis-modal-body::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.4);
+}
+
+.analysis-modal-footer {
+  padding: 16px 24px 24px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.close-btn-large {
+  width: 100%;
+  padding: 14px;
+  background: white;
+  color: #667eea;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.close-btn-large:hover {
+  background: rgba(255, 255, 255, 0.95);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.close-btn-large:active {
+  transform: translateY(0);
+}
+
+.analysis-section {
+  background: rgba(255, 255, 255, 0.15);
+  padding: 16px;
+  border-radius: 12px;
+  backdrop-filter: blur(10px);
+}
+
+.analysis-subtitle {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+}
+
+.analysis-plant-name {
+  margin: 8px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: white;
+}
+
+.analysis-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.analysis-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* 비교 카드 */
+.comparison-card {
+  background: rgba(255, 255, 255, 0.1);
+  padding: 16px;
+  border-radius: 12px;
+  margin-bottom: 12px;
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.comparison-icon {
+  font-size: 20px;
+}
+
+.comparison-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+}
+
+.comparison-content {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.current-value,
+.optimal-range {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.current-value .label,
+.optimal-range .label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 500;
+}
+
+.current-value .value {
+  font-size: 18px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.current-value .value.status-good {
+  background: rgba(39, 174, 96, 0.3);
+  color: #d4edda;
+}
+
+.current-value .value.status-warning {
+  background: rgba(243, 156, 18, 0.3);
+  color: #fff3cd;
+}
+
+.current-value .value.status-danger {
+  background: rgba(231, 76, 60, 0.3);
+  color: #fdecea;
+}
+
+.optimal-range .range-text {
+  font-size: 13px;
+  color: white;
+  line-height: 1.4;
+}
+
+.advice {
+  background: rgba(255, 255, 255, 0.2);
+  padding: 12px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: white;
+}
+
+/* 종합 조언 */
+.analysis-section.summary {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.advice-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.advice-item {
+  margin: 0;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: white;
+}
+
 /* 차트 섹션 */
 .chart-section {
   margin: 20px;
@@ -986,6 +1596,11 @@ onMounted(() => {
 
 .care-action-btn:active {
   transform: translateY(1px);
+}
+
+.care-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .action-icon {
@@ -1362,6 +1977,10 @@ onMounted(() => {
 
   .care-actions {
     grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .comparison-content {
+    grid-template-columns: 1fr;
   }
 }
 </style>
