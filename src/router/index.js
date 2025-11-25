@@ -47,6 +47,13 @@ const routes = [
         meta: { requiresAuth: true, showBottomNav: true }
       },
       {
+        path: 'edit-plant/:id',
+        name: 'EditPlant',
+        component: () => import('@/components/Home/EditPlant.vue'),
+        props: true,
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'plant-search',
         name: 'PlantSearch',
         component: PlantSearch,
