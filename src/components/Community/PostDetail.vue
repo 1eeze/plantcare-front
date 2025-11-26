@@ -506,7 +506,7 @@ const analyzeQuality = async (imageFile, plantId) => {
         sensorQualityConfidence.value = prediction.confidence
       }
       saveQualityLocally(postId, plantId, sensorQualityGrade.value, sensorQualityConfidence.value)
-      await persistQualityGrade(plantId, sensorQualityGrade.value)
+      await persistQualityGrade(plantId, sensorQualityGrade.value, sensorQualityConfidence.value)
     } else {
       sensorQualityGrade.value = '-'
     }
@@ -522,7 +522,7 @@ const goMeasureQuality = () => {
   openQualityCapture()
 }
 
-const persistQualityGrade = async (plantId, grade) => {
+const persistQualityGrade = async (plantId, grade, confidence) => {
   if (!plantId || !grade) return
   try {
     const { data: current } = await supabase
@@ -535,7 +535,7 @@ const persistQualityGrade = async (plantId, grade) => {
       ...message, 
       quality: { 
         grade, 
-        confidence: qualityConfidenceDisplay.value ?? sensorQualityConfidence.value ?? null,
+        confidence: confidence ?? qualityConfidenceDisplay.value ?? sensorQualityConfidence.value ?? null,
         updated_at: new Date().toISOString() 
       } 
     }
@@ -544,6 +544,15 @@ const persistQualityGrade = async (plantId, grade) => {
       .update({ message: nextMessage })
       .eq('id', plantId)
       .eq('user_id', currentUser.value?.id)
+
+    // posts 테이블에도 저장
+    await supabase
+      .from('posts')
+      .update({
+        quality_grade: grade,
+        quality_confidence: confidence ?? qualityConfidenceDisplay.value ?? sensorQualityConfidence.value ?? null
+      })
+      .eq('id', postId)
   } catch (err) {
     console.error('품질 등급 저장 실패:', err)
     alert('품질 등급을 저장하지 못했습니다. 권한을 확인해주세요.')

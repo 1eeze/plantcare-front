@@ -492,6 +492,45 @@ export default {
       }
     },
 
+    async persistQualityGrade(post, grade, confidence) {
+      if (!post || !post.id || !grade) return
+      try {
+        // 게시글 테이블에 반영
+        await supabase
+          .from('posts')
+          .update({
+            quality_grade: grade,
+            quality_confidence: confidence ?? null
+          })
+          .eq('id', post.id)
+
+        // User_Plants.message에도 저장 (본인 글인 경우에만)
+        if (this.currentUser && post.user_id === this.currentUser.id && post.plant_id) {
+          const { data: current } = await supabase
+            .from('User_Plants')
+            .select('message')
+            .eq('id', post.plant_id)
+            .maybeSingle()
+          const message = current?.message || {}
+          const nextMessage = {
+            ...message,
+            quality: {
+              grade,
+              confidence: confidence ?? null,
+              updated_at: new Date().toISOString()
+            }
+          }
+          await supabase
+            .from('User_Plants')
+            .update({ message: nextMessage })
+            .eq('id', post.plant_id)
+            .eq('user_id', this.currentUser.id)
+        }
+      } catch (err) {
+        console.error('품질 등급 영구 저장 실패:', err)
+      }
+    },
+
     async analyzeQualityFromPhoto(post, photoUrl) {
       if (!photoUrl || !post || post.analyzingQuality) return
       post.analyzingQuality = true
@@ -522,6 +561,7 @@ export default {
             post.quality_confidence = confidence
           }
           this.saveQualityLocally(post.id, post.plant_id, grade, confidence)
+          await this.persistQualityGrade(post, grade, confidence)
         }
       } catch (err) {
         console.error('사진 기반 품질 분석 실패:', err)
