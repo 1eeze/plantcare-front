@@ -469,6 +469,67 @@ export default {
       return labels[grade] || '등급 미분류'
     },
 
+    extractPhotoUrl(photos) {
+      if (!photos) return null
+      if (Array.isArray(photos)) {
+        const first = photos[0]
+        if (!first) return null
+        return first.url || first.path || first
+      }
+      if (typeof photos === 'object' && photos.url) return photos.url
+      return null
+    },
+
+    saveQualityLocally(postId, plantId, grade, confidence) {
+      if (typeof localStorage === 'undefined') return
+      try {
+        const raw = localStorage.getItem('post-quality-grades')
+        const parsed = raw ? JSON.parse(raw) : {}
+        parsed[postId] = { grade, plantId, confidence }
+        localStorage.setItem('post-quality-grades', JSON.stringify(parsed))
+      } catch (e) {
+        console.error('로컬 품질 저장 실패:', e)
+      }
+    },
+
+    async analyzeQualityFromPhoto(post, photoUrl) {
+      if (!photoUrl || !post || post.analyzingQuality) return
+      post.analyzingQuality = true
+      try {
+        const imgRes = await fetch(photoUrl)
+        const blob = await imgRes.blob()
+        const formData = new FormData()
+        formData.append('file', blob, 'plant.jpg')
+
+        const response = await fetch(this.QUALITY_API_URL, {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!response.ok) {
+          console.error('품질 API 오류:', await response.text())
+          return
+        }
+
+        const data = await response.json()
+        if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
+          const prediction = data.predictions[0]
+          const grade = prediction.grade || post.sensorQuality || '-'
+          const confidence = prediction.confidence ?? null
+          post.quality_grade = grade
+          post.sensorQuality = grade
+          if (confidence !== null && confidence !== undefined) {
+            post.quality_confidence = confidence
+          }
+          this.saveQualityLocally(post.id, post.plant_id, grade, confidence)
+        }
+      } catch (err) {
+        console.error('사진 기반 품질 분석 실패:', err)
+      } finally {
+        post.analyzingQuality = false
+      }
+    },
+
     getQualityConfidenceValue(post) {
       if (!post) return null
       if (post.quality_confidence !== null && post.quality_confidence !== undefined) {
@@ -589,6 +650,9 @@ export default {
         if (cached?.grade) {
           post.sensorQuality = cached.grade
           if (!post.plant_id && cached.plantId) post.plant_id = cached.plantId
+          if (cached.confidence !== undefined && cached.confidence !== null) {
+            post.quality_confidence = cached.confidence
+          }
         }
       })
 
@@ -606,16 +670,19 @@ export default {
         // 2) 품질 메타 한번에 조회
         const { data: plantMeta } = await supabase
           .from('User_Plants')
-          .select('id, message')
+          .select('id, message, photos')
           .in('id', plantIds)
         const qualityMap = {}
         const qualityConfidenceMap = {}
+        const photoMap = {}
         if (plantMeta) {
           plantMeta.forEach(pm => {
             qualityMap[pm.id] = pm.message?.quality?.grade || '-'
             if (pm.message?.quality && pm.message.quality.confidence !== undefined) {
               qualityConfidenceMap[pm.id] = pm.message.quality.confidence
             }
+            const photoUrl = this.extractPhotoUrl(pm.photos)
+            if (photoUrl) photoMap[pm.id] = photoUrl
           })
         }
 
@@ -646,21 +713,35 @@ export default {
           })
         }
 
+        const photoPredictQueue = []
+
         slice.forEach(post => {
           const pid = post.plant_id
-          if (!pid) return
-          post.sensorStatus = sensorMap[pid] || { humidity: null, temp: null, light: null }
-          if (!post.sensorQuality || post.sensorQuality === '-') {
-            post.sensorQuality = qualityMap[pid] || this.computeQuality(post.sensorStatus)
-          }
-          if (post.quality_confidence === null || post.quality_confidence === undefined) {
-            if (qualityConfidenceMap[pid] !== undefined) {
-              post.quality_confidence = qualityConfidenceMap[pid]
-            } else {
-              post.quality_confidence = this.computeQualityConfidence(post.sensorStatus)
+          const photoUrl = post.image || (pid ? photoMap[pid] : null)
+
+          if (pid) {
+            post.sensorStatus = sensorMap[pid] || { humidity: null, temp: null, light: null }
+            if (!post.sensorQuality || post.sensorQuality === '-') {
+              post.sensorQuality = qualityMap[pid] || this.computeQuality(post.sensorStatus)
+            }
+            if (post.quality_confidence === null || post.quality_confidence === undefined) {
+              if (qualityConfidenceMap[pid] !== undefined) {
+                post.quality_confidence = qualityConfidenceMap[pid]
+              } else {
+                post.quality_confidence = this.computeQualityConfidence(post.sensorStatus)
+              }
             }
           }
+
+          if ((!post.sensorQuality || post.sensorQuality === '-' || post.sensorQuality === null) && photoUrl) {
+            photoPredictQueue.push({ post, photoUrl })
+          }
         })
+
+        // 사진 기반 자동 품질 계산 (너무 많이 호출하지 않도록 최대 3개만)
+        for (const item of photoPredictQueue.slice(0, 3)) {
+          await this.analyzeQualityFromPhoto(item.post, item.photoUrl)
+        }
       } catch (err) {
         console.error('센서 상태 일괄 연동 실패:', err)
         slice.forEach(post => { post.sensorStatus = { humidity: null, temp: null, light: null } })

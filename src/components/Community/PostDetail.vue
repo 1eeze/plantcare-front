@@ -203,10 +203,18 @@ const fetchPost = async () => {
   if (localQuality?.grade) {
     sensorQualityGrade.value = localQuality.grade
     if (localQuality.plantId) sensorPlantId.value = localQuality.plantId
+    if (localQuality.confidence !== undefined && localQuality.confidence !== null) {
+      sensorQualityConfidence.value = localQuality.confidence
+    }
   }
 
   // ✅ post 값이 셋업된 뒤에 센서값 시도 (userId, title 넘겨줌)
   await loadSensorStatus(data.user_id, data.title)
+
+  // 품질 등급이 아직 없고 게시글 이미지가 있으면 이미지 기반 자동 분석
+  if ((!sensorQualityGrade.value || sensorQualityGrade.value === '-') && data.image) {
+    await analyzeQualityFromPhotoUrl(data.image, sensorPlantId.value || data.plant_id || null)
+  }
 
   const { data: authData } = await supabase.auth.getUser()
   const user = authData?.user
@@ -332,12 +340,12 @@ const sensorQualityConfidence = ref(null)
 const measuringQuality = ref(false)
 const QUALITY_STORAGE_KEY = 'post-quality-grades'
 
-const saveQualityLocally = (postId, plantId, grade) => {
+const saveQualityLocally = (postId, plantId, grade, confidence) => {
   if (typeof localStorage === 'undefined') return
   try {
     const raw = localStorage.getItem(QUALITY_STORAGE_KEY)
     const parsed = raw ? JSON.parse(raw) : {}
-    parsed[postId] = { grade, plantId }
+    parsed[postId] = { grade, plantId, confidence }
     localStorage.setItem(QUALITY_STORAGE_KEY, JSON.stringify(parsed))
   } catch (err) {
     console.error('품질 로컬 저장 실패:', err)
@@ -435,6 +443,21 @@ const ensurePlantId = async () => {
   return null
 }
 
+const analyzeQualityFromPhotoUrl = async (photoUrl, plantId = sensorPlantId.value || post.value?.plant_id || null) => {
+  if (!photoUrl) return
+  if (measuringQuality.value) return
+  measuringQuality.value = true
+  try {
+    const imgRes = await fetch(photoUrl)
+    const blob = await imgRes.blob()
+    await analyzeQuality(blob, plantId || undefined)
+  } catch (err) {
+    console.error('사진 기반 품질 분석 실패:', err)
+  } finally {
+    measuringQuality.value = false
+  }
+}
+
 const openQualityCapture = async () => {
   if (measuringQuality.value) return
   if (!currentUser.value || currentUser.value.id !== post.value?.user_id) {
@@ -482,7 +505,7 @@ const analyzeQuality = async (imageFile, plantId) => {
       if (prediction.confidence !== undefined) {
         sensorQualityConfidence.value = prediction.confidence
       }
-      saveQualityLocally(postId, plantId, sensorQualityGrade.value)
+      saveQualityLocally(postId, plantId, sensorQualityGrade.value, sensorQualityConfidence.value)
       await persistQualityGrade(plantId, sensorQualityGrade.value)
     } else {
       sensorQualityGrade.value = '-'
@@ -528,6 +551,17 @@ const persistQualityGrade = async (plantId, grade) => {
 }
 
 // ✅ plant_id 기반 센서 조회 + 제목/유저 기반 fallback
+const extractPhotoUrl = (photos) => {
+  if (!photos) return null
+  if (Array.isArray(photos)) {
+    const first = photos[0]
+    if (!first) return null
+    return first.url || first.path || first
+  }
+  if (typeof photos === 'object' && photos.url) return photos.url
+  return null
+}
+
 const loadSensorStatus = async (userId, title) => {
   // 기본값(모두 '-') 유지
   sensorStatus.value = { humidity: null, temp: null, light: null }
@@ -549,13 +583,18 @@ const loadSensorStatus = async (userId, title) => {
       console.log('[센서] posts.plant_id 사용:', plantId)
       const { data: plantMeta } = await supabase
         .from('User_Plants')
-        .select('message')
+        .select('message, photos')
         .eq('id', plantId)
         .maybeSingle()
       const mq = plantMeta?.message?.quality?.grade
       const mc = plantMeta?.message?.quality?.confidence
       if (mq) sensorQualityGrade.value = mq
       if (mc !== undefined && mc !== null) sensorQualityConfidence.value = mc
+      const photoUrl = extractPhotoUrl(plantMeta?.photos)
+      if (photoUrl) sensorPlantId.value = plantId // ensure cached
+      if ((sensorQualityGrade.value === '-' || !sensorQualityGrade.value) && photoUrl) {
+        await analyzeQualityFromPhotoUrl(photoUrl, plantId)
+      }
     } else {
       // 2순위: User_Plants에서 userId + title 매칭
       if (!userId || !title) {
@@ -563,7 +602,7 @@ const loadSensorStatus = async (userId, title) => {
       } else {
         const { data: plantRow, error: plantError } = await supabase
           .from('User_Plants')
-          .select('id, name, message')
+          .select('id, name, message, photos')
           .eq('user_id', userId)
           .ilike('name', title) // 제목과 식물이름 대소문자/부분매칭
           .maybeSingle()
@@ -579,11 +618,15 @@ const loadSensorStatus = async (userId, title) => {
           const mc = plantRow.message?.quality?.confidence
           if (mq) sensorQualityGrade.value = mq
           if (mc !== undefined && mc !== null) sensorQualityConfidence.value = mc
+          const photoUrl = extractPhotoUrl(plantRow.photos)
+          if ((sensorQualityGrade.value === '-' || !sensorQualityGrade.value) && photoUrl) {
+            await analyzeQualityFromPhotoUrl(photoUrl, plantId)
+          }
         } else {
           // 이름 매칭 실패: 가장 최근 업데이트 식물로 fallback
           const { data: latestPlant, error: latestErr } = await supabase
             .from('User_Plants')
-            .select('id, message')
+            .select('id, message, photos')
             .eq('user_id', userId)
             .order('updated_at', { ascending: false })
             .limit(1)
@@ -595,6 +638,10 @@ const loadSensorStatus = async (userId, title) => {
             const mc = latestPlant.message?.quality?.confidence
             if (mq) sensorQualityGrade.value = mq
             if (mc !== undefined && mc !== null) sensorQualityConfidence.value = mc
+            const photoUrl = extractPhotoUrl(latestPlant.photos)
+            if ((sensorQualityGrade.value === '-' || !sensorQualityGrade.value) && photoUrl) {
+              await analyzeQualityFromPhotoUrl(photoUrl, plantId)
+            }
           }
         }
       }
