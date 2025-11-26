@@ -148,8 +148,7 @@
             @click="openChat(chat)"
           >
             <div class="message-avatar">
-              <img :src="chat.avatar || '/assets/default-avatar.png'" :alt="chat.name" class="user-avatar" />
-              <div v-if="chat.unreadCount > 0" class="unread-count">{{ chat.unreadCount }}</div>
+            <img :src="chat.avatar || defaultProfile" :alt="chat.name" class="user-avatar" />              <div v-if="chat.unreadCount > 0" class="unread-count">{{ chat.unreadCount }}</div>
             </div>
             
             <div class="message-content">
@@ -234,6 +233,7 @@
 import { ref, computed, onMounted, onActivated, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import defaultProfile from '@/assets/user-profile.png'
 
 const router = useRouter()
 const activeTab = ref('notifications')
