@@ -802,7 +802,11 @@ export default {
             }
           }
 
-          if ((!post.sensorQuality || post.sensorQuality === '-' || post.sensorQuality === null) && photoUrl) {
+          const needsImageQuality =
+            (!post.quality_grade || post.quality_grade === '-' || post.quality_grade === null) &&
+            photoUrl
+
+          if (needsImageQuality) {
             photoPredictQueue.push({ post, photoUrl })
           }
         })
