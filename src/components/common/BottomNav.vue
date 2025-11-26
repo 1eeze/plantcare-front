@@ -78,6 +78,7 @@ export default {
     }
 
     const isActive = (path) => {
+      if (!route.path) return false
       if (path === '/') {
         return route.path === '/'
       }
