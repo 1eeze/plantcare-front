@@ -313,6 +313,7 @@ const measuringQuality = ref(false)
 const QUALITY_STORAGE_KEY = 'post-quality-grades'
 
 const saveQualityLocally = (postId, plantId, grade) => {
+  if (typeof localStorage === 'undefined') return
   try {
     const raw = localStorage.getItem(QUALITY_STORAGE_KEY)
     const parsed = raw ? JSON.parse(raw) : {}
@@ -324,6 +325,7 @@ const saveQualityLocally = (postId, plantId, grade) => {
 }
 
 const loadQualityLocally = (postId) => {
+  if (typeof localStorage === 'undefined') return null
   try {
     const raw = localStorage.getItem(QUALITY_STORAGE_KEY)
     if (!raw) return null

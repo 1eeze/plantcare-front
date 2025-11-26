@@ -104,18 +104,12 @@
         <p class="date">{{ formatDate(post.created_at || post.date) }}</p>
 
         <!-- 본문 -->
-        <div class="post-content">
+        <div class="post-content" role="button" tabindex="0" @click="goToPost(post.id)" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
           <p class="post-description">{{ post.text }}</p>
           
-          <!-- ✨ 등급 상세 정보 (NEW!) -->
-          <div v-if="post.quality_grade" class="quality-detail">
+          <!-- 품질 신뢰도 (있을 때만) -->
+          <div v-if="post.quality_confidence !== null && post.quality_confidence !== undefined" class="quality-detail">
             <div class="quality-info-row">
-              <span class="quality-label">품질 등급</span>
-              <span class="quality-value" :style="{ color: getGradeColor(post.quality_grade) }">
-                {{ getGradeLabel(post.quality_grade) }}
-              </span>
-            </div>
-            <div v-if="post.quality_confidence" class="quality-info-row">
               <span class="quality-label">신뢰도</span>
               <span class="quality-value">{{ (post.quality_confidence * 100).toFixed(1) }}%</span>
             </div>
@@ -134,11 +128,13 @@
               <span class="chip-label">☀️ 조도</span>
               <span class="chip-value">{{ formatSensor(post.sensorStatus.light) }} lux</span>
             </div>
-              <div class="sensor-chip quality">
-                <span class="chip-label">🌿 품질</span>
-                <span class="chip-value">{{ post.sensorQuality || computeQuality(post.sensorStatus) || '-' }}</span>
-              </div>
+            <div class="sensor-chip quality" :class="getQualityBadgeClass(post.quality_grade || post.sensorQuality)">
+              <span class="chip-label">🌿 품질</span>
+              <span class="chip-value">
+                {{ getGradeLabel(post.quality_grade || post.sensorQuality || '-') }}
+              </span>
             </div>
+          </div>
           <div v-if="post.tags && post.tags.length > 0" class="tags">
             <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
           </div>
@@ -278,9 +274,9 @@ export default {
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase()
         filtered = filtered.filter(post => 
-          post.title.toLowerCase().includes(query) ||
+          (post.title && post.title.toLowerCase().includes(query)) ||
           (post.text && post.text.toLowerCase().includes(query)) ||
-          (post.tags && post.tags.some(tag => tag.toLowerCase().includes(query)))
+          (post.tags && post.tags.some(tag => tag && tag.toLowerCase().includes(query)))
         )
       }
 
@@ -369,87 +365,35 @@ export default {
             .select('post_id')
             .eq('user_id', this.currentUser.id)
 
-          if (likes) likes.forEach(l => myLikedIds.add(l.post_id))
-          if (bookmarks) bookmarks.forEach(b => myBookmarkedIds.add(b.post_id))
-        }
+      if (likes) likes.forEach(l => myLikedIds.add(l.post_id))
+      if (bookmarks) bookmarks.forEach(b => myBookmarkedIds.add(b.post_id))
+      }
 
-        // 기본 데이터 먼저 매핑
-        this.posts = postsData.map(post => ({
-          ...post,
-          date: this.formatDate(post.created_at),
-          liked: myLikedIds.has(post.id),
-          bookmarked: myBookmarkedIds.has(post.id),
-          likes: post.likes || 0,
-          comments: post.comments || 0,
-          views: post.views || 0,
-          // 등급 분석 전 기본값
-          quality_grade: null,
-          quality_confidence: null,
-          analyzingQuality: false
-        }))
-
-        // ✨ 각 게시글의 이미지로 등급 분석 (백그라운드에서 진행)
-        this.posts.forEach(async (post) => {
-          if (post.image) {
-            post.analyzingQuality = true
-            try {
-              const qualityResult = await this.analyzeQualityFromURL(post.image)
-              post.quality_grade = qualityResult.grade
-              post.quality_confidence = qualityResult.confidence
-            } catch (e) {
-              console.error(`등급 분석 실패 (게시글 ${post.id}):`, e)
-            } finally {
-              post.analyzingQuality = false
-            }
-          }
-        })
+      // 기본 데이터 매핑 (센서/품질은 비동기 후처리)
+      const enriched = postsData.map(post => ({
+        ...post,
+        date: this.formatDate(post.created_at),
+        liked: myLikedIds.has(post.id),
+        bookmarked: myBookmarkedIds.has(post.id),
+        likes: post.likes || 0,
+        comments: post.comments || 0,
+        views: post.views || 0,
+        // 품질 API 결과(이미지 기반) 유지용
+        quality_grade: post.quality_grade || null,
+        quality_confidence: post.quality_confidence ?? null,
+        analyzingQuality: post.analyzingQuality || false,
+        // 센서/품질 메타
+        sensorStatus: { humidity: null, temp: null, light: null },
+        sensorQuality: '-'
+      }))
+      this.posts = enriched
+      // 센서/품질은 비동기로 처리해 초기 렌더 지연을 줄임
+      this.attachSensorStatus(enriched).catch(e => console.error('센서/품질 연동 실패:', e))
 
       } catch (e) {
         console.error('게시글 로드 실패:', e)
       } finally {
         this.loading = false
-      }
-    },
-
-    // ✨ 이미지 URL로 등급 분석하는 함수
-    async analyzeQualityFromURL(imageUrl) {
-      try {
-        console.log('🏆 등급 분석 시작:', imageUrl)
-
-        // 1. 이미지 URL을 Blob으로 가져오기
-        const response = await fetch(imageUrl)
-        if (!response.ok) throw new Error('이미지 로드 실패')
-        
-        const blob = await response.blob()
-        const file = new File([blob], 'plant.jpg', { type: blob.type })
-
-        // 2. FormData로 API 호출
-        const formData = new FormData()
-        formData.append('file', file)
-
-        const apiResponse = await fetch(this.QUALITY_API_URL, {
-          method: 'POST',
-          body: formData
-        })
-
-        if (!apiResponse.ok) throw new Error(`API 오류: ${apiResponse.status}`)
-
-        const data = await apiResponse.json()
-        console.log('🏆 등급 분석 결과:', data)
-
-        if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
-          const prediction = data.predictions[0]
-          return {
-            grade: prediction.grade,
-            confidence: prediction.confidence
-          }
-        }
-
-        return { grade: null, confidence: null }
-
-      } catch (err) {
-        console.error('💥 등급 분석 실패:', err)
-        return { grade: null, confidence: null }
       }
     },
 
@@ -500,6 +444,20 @@ export default {
         'B': '#cd7f32'
       }
       return colors[grade] || '#95a5a6'
+    },
+
+    getQualityBadgeClass(rawGrade) {
+      if (!rawGrade || rawGrade === '-') return ''
+
+      const grade = String(rawGrade).trim().toUpperCase()
+      const map = {
+        S: 'quality-grade-s',
+        A: 'quality-grade-a',
+        B: 'quality-grade-b',
+        C: 'quality-grade-c'
+      }
+
+      return map[grade] || ''
     },
 
     getGradeLabel(grade) {
@@ -570,111 +528,115 @@ export default {
       if (score === 2) return 'B'
       return 'C'
     },
+    computeQualityConfidence(status) {
+      if (!status) return null
+      const { humidity, temp, light } = status
+      const readings = [humidity, temp, light]
+      if (readings.some(v => v === null || v === undefined)) return null
+
+      let score = 0
+      const inRange = (val, min, max) => val >= min && val <= max
+      if (inRange(humidity, 40, 70)) score++
+      if (inRange(temp, 18, 28)) score++
+      if (inRange(light, 40, 80)) score++
+
+      return +(score / 3).toFixed(2)
+    },
     async attachSensorStatus(posts) {
       const limit = 10
       const slice = posts.slice(0, limit)
-      await Promise.all(slice.map(async (post) => {
-        try {
-          // 로컬 저장된 품질/식물 우선 적용
-          try {
-            const raw = localStorage.getItem('post-quality-grades')
-            if (raw) {
-              const parsed = JSON.parse(raw)
-              if (parsed[post.id]?.grade) {
-                post.sensorQuality = parsed[post.id].grade
-                if (!post.plant_id && parsed[post.id]?.plantId) {
-                  post.plant_id = parsed[post.id].plantId
-                }
-              }
-            }
-          } catch (e) {
-            console.error('로컬 품질 로드 실패:', e)
-          }
 
-          let plantId = post.plant_id || null
-
-          if (!plantId) {
-            // 제목과 식물이름 매칭
-            const { data: plantRow, error: plantError } = await supabase
-              .from('User_Plants')
-              .select('id, message')
-              .eq('user_id', post.user_id)
-              .ilike('name', post.title)
-              .maybeSingle()
-            if (!plantError && plantRow) {
-              plantId = plantRow.id
-              post.sensorQuality = plantRow.message?.quality?.grade || '-'
-            } else if (plantError && plantError.code !== 'PGRST116') {
-              console.error('센서 식물 매칭 오류:', plantError)
-            }
-          } else {
-            const { data: plantMeta } = await supabase
-              .from('User_Plants')
-              .select('message')
-              .eq('id', plantId)
-              .maybeSingle()
-            if (plantMeta?.message?.quality?.grade) {
-              post.sensorQuality = plantMeta.message.quality.grade
-            }
-          }
-
-          // 로컬에 저장된 품질 값이 있으면 우선 반영
-          try {
-            const raw = localStorage.getItem('post-quality-grades')
-            if (raw) {
-              const parsed = JSON.parse(raw)
-              if (parsed[post.id]?.grade) {
-                post.sensorQuality = parsed[post.id].grade
-                if (!plantId && parsed[post.id]?.plantId) {
-                  plantId = parsed[post.id].plantId
-                }
-              }
-            }
-          } catch (e) {
-            console.error('로컬 품질 로드 실패:', e)
-          }
-
-          if (!plantId) {
-            post.sensorStatus = { humidity: null, temp: null, light: null }
-            return
-          }
-
-          const { data, error } = await supabase
-            .from('sensor_data')
-            .select('humidity, temp, light')
-            .eq('plant_id', plantId)
-            .maybeSingle()
-          if (error) {
-            if (error.code !== 'PGRST116') console.error('센서 데이터 오류:', error)
-            post.sensorStatus = { humidity: null, temp: null, light: null }
-            return
-          }
-          if (!data) {
-            post.sensorStatus = { humidity: null, temp: null, light: null }
-            return
-          }
-          const latestVal = (arr) => {
-            if (!arr) return null
-            if (Array.isArray(arr) && arr.length) {
-              const last = arr[arr.length - 1]
-              return typeof last === 'number' ? last : (last?.value ?? null)
-            }
-            return null
-          }
-          post.sensorStatus = {
-            humidity: latestVal(data.humidity),
-            temp: latestVal(data.temp),
-            light: latestVal(data.light)
-          }
-
-          if (!post.sensorQuality || post.sensorQuality === '-') {
-            post.sensorQuality = this.computeQuality(post.sensorStatus)
-          }
-        } catch (err) {
-          console.error('센서 상태 연동 실패:', err)
-          post.sensorStatus = { humidity: null, temp: null, light: null }
+      // 1) 로컬 품질 캐시 반영
+      let localCache = {}
+      try {
+        if (typeof localStorage !== 'undefined') {
+          const raw = localStorage.getItem('post-quality-grades')
+          if (raw) localCache = JSON.parse(raw)
         }
-      }))
+      } catch (e) {
+        console.error('로컬 품질 로드 실패:', e)
+      }
+      slice.forEach(post => {
+        const cached = localCache[post.id]
+        if (cached?.grade) {
+          post.sensorQuality = cached.grade
+          if (!post.plant_id && cached.plantId) post.plant_id = cached.plantId
+        }
+      })
+
+      // 게시글에 저장된 품질 값이 있으면 우선 반영
+      slice.forEach(post => {
+        if (post.quality_grade) {
+          post.sensorQuality = post.quality_grade
+        }
+      })
+
+      const plantIds = slice.map(p => p.plant_id).filter(Boolean)
+      if (plantIds.length === 0) return
+
+      try {
+        // 2) 품질 메타 한번에 조회
+        const { data: plantMeta } = await supabase
+          .from('User_Plants')
+          .select('id, message')
+          .in('id', plantIds)
+        const qualityMap = {}
+        const qualityConfidenceMap = {}
+        if (plantMeta) {
+          plantMeta.forEach(pm => {
+            qualityMap[pm.id] = pm.message?.quality?.grade || '-'
+            if (pm.message?.quality && pm.message.quality.confidence !== undefined) {
+              qualityConfidenceMap[pm.id] = pm.message.quality.confidence
+            }
+          })
+        }
+
+        // 3) 센서 데이터 한번에 조회
+        const { data: sensorRows, error: sensorError } = await supabase
+          .from('sensor_data')
+          .select('plant_id, humidity, temp, light')
+          .in('plant_id', plantIds)
+        if (sensorError && sensorError.code !== 'PGRST116') {
+          console.error('센서 데이터 오류:', sensorError)
+        }
+        const sensorMap = {}
+        if (sensorRows) {
+          sensorRows.forEach(row => {
+            const latestVal = (arr) => {
+              if (!arr) return null
+              if (Array.isArray(arr) && arr.length) {
+                const last = arr[arr.length - 1]
+                return typeof last === 'number' ? last : (last?.value ?? null)
+              }
+              return null
+            }
+            sensorMap[row.plant_id] = {
+              humidity: latestVal(row.humidity),
+              temp: latestVal(row.temp),
+              light: latestVal(row.light)
+            }
+          })
+        }
+
+        slice.forEach(post => {
+          const pid = post.plant_id
+          if (!pid) return
+          post.sensorStatus = sensorMap[pid] || { humidity: null, temp: null, light: null }
+          if (!post.sensorQuality || post.sensorQuality === '-') {
+            post.sensorQuality = qualityMap[pid] || this.computeQuality(post.sensorStatus)
+          }
+          if (post.quality_confidence === null || post.quality_confidence === undefined) {
+            if (qualityConfidenceMap[pid] !== undefined) {
+              post.quality_confidence = qualityConfidenceMap[pid]
+            } else {
+              post.quality_confidence = this.computeQualityConfidence(post.sensorStatus)
+            }
+          }
+        })
+      } catch (err) {
+        console.error('센서 상태 일괄 연동 실패:', err)
+        slice.forEach(post => { post.sensorStatus = { humidity: null, temp: null, light: null } })
+      }
     },
     
     openChat(post) {
@@ -1071,6 +1033,7 @@ export default {
 
 .post-content {
   padding: 0 15px 15px;
+  cursor: pointer;
 }
 
 .post-description {
@@ -1084,6 +1047,10 @@ export default {
 .chip-label { font-weight: 700; color: #4a8063; letter-spacing: -0.2px; }
 .chip-value { font-weight: 700; color: #1e4d6b; }
 .sensor-chip.quality { background: linear-gradient(135deg, #fff3e0, #ffe9d6); border-color: #ffd2a8; }
+.sensor-chip.quality.quality-grade-s { background: linear-gradient(135deg, #fff9db, #ffe892); border-color: #ffd95b; }
+.sensor-chip.quality.quality-grade-a { background: linear-gradient(135deg, #f2f4f7, #e2e7ee); border-color: #cfd8e3; }
+.sensor-chip.quality.quality-grade-b { background: linear-gradient(135deg, #fff1e6, #ffd6b0); border-color: #f5c08f; }
+.sensor-chip.quality.quality-grade-c { background: linear-gradient(135deg, #f7f7f7, #ededed); border-color: #d9d9d9; }
 
 .tags {
   display: flex;
