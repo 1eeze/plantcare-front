@@ -12,6 +12,7 @@ import PlantDetail from '@/components/Home/PlantDetail.vue'
 import AddPlant from '@/components/Home/AddPlant.vue'
 import PlantSearch from '@/components/Home/PlantSearch.vue'
 import Notification from '@/components/Home/Notification.vue'
+import ReportsPage from '@/components/Home/ReportsPage.vue'
 import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
 import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
@@ -64,7 +65,13 @@ const routes = [
         name: 'Notification',
         component: Notification
       },
-      { 
+      {
+        path: 'reports',
+        name: 'ReportsPage',
+        component: ReportsPage,
+        meta: { requiresAuth: true }
+      },
+      {
         path: 'marketprice', 
         name: 'MarketPrice',
         component: MarketPrice 

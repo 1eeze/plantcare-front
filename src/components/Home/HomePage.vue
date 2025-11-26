@@ -226,7 +226,7 @@
       <div class="camera-choice-sheet">
         <p class="camera-choice-title">사진을 어떻게 가져올까요?</p>
         <button class="camera-choice-btn" @click="takePhoto">📷 사진 촬영</button>
-        <button class="camera-choice-btn" @click="pickFromGallery">🖼 갤러리에서 선택</button>
+        <button class="camera-choice-btn" @click="pickFromGallery">📊 리포트에서 선택</button>
         <button class="camera-choice-cancel" @click="showCameraChoice = false">취소</button>
       </div>
     </div>
@@ -630,6 +630,11 @@ const handleImageFile = async (file) => {
   }
 }
 
+// 리포트 관련 상태
+const recentReports = ref([])
+const selectedReport = ref(null)
+const showReportDetail = ref(false)
+
 // 기타 헬퍼 함수
 const toggleMenu = () => showMenu.value = !showMenu.value
 const openCamera = () => showCameraChoice.value = true
@@ -640,10 +645,9 @@ const takePhoto = () => {
   input.click()
 }
 const pickFromGallery = () => {
-  const input = document.createElement('input')
-  input.type = 'file'; input.accept = 'image/*'
-  input.onchange = (e) => handleImageFile(e.target.files[0])
-  input.click()
+  showCameraChoice.value = false
+  // 리포트 페이지로 이동하거나 리포트 목록을 보여줌
+  viewAllReports()
 }
 const closePestResult = () => {
   showPestResult.value = false
@@ -651,15 +655,106 @@ const closePestResult = () => {
   showOrganDetail.value = false
   showStageDetail.value = false
 }
-const saveAnalysisResult = () => { 
-  alert('분석 결과가 저장되었습니다!'); 
-  closePestResult() 
+const saveAnalysisResult = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('analysis_reports')
+      .insert({
+        user_id: user.id,
+        pest_class_name: pestResult.value?.className,
+        pest_kr_name: pestResult.value?.krName,
+        pest_confidence: pestResult.value?.confidence,
+        organ: growthResult.value?.organ,
+        organ_confidence: growthResult.value?.organConfidence,
+        stage: growthResult.value?.stage,
+        stage_confidence: growthResult.value?.stageConfidence
+      })
+
+    if (error) {
+      console.error('리포트 저장 실패:', error)
+      alert('리포트 저장에 실패했습니다: ' + error.message)
+    } else {
+      alert('분석 결과가 저장되었습니다!')
+      await loadRecentReports()
+      closePestResult()
+    }
+  } catch (err) {
+    console.error('리포트 저장 오류:', err)
+    alert('오류가 발생했습니다: ' + err.message)
+  }
 }
 const togglePestDetail = () => showPestDetail.value = !showPestDetail.value
 const toggleOrganDetail = () => showOrganDetail.value = !showOrganDetail.value
 const toggleStageDetail = () => showStageDetail.value = !showStageDetail.value
 const getPestSolution = (cls) => PEST_SOLUTION[cls] || PEST_SOLUTION.default
 const getStageTip = (s) => s ? '관리에 신경써주세요.' : ''
+
+// 리포트 관련 함수
+const loadRecentReports = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data, error } = await supabase
+      .from('analysis_reports')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    if (error) {
+      console.error('리포트 조회 실패:', error)
+    } else {
+      recentReports.value = data || []
+    }
+  } catch (err) {
+    console.error('리포트 로드 오류:', err)
+  }
+}
+
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now - date
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (hours < 1) return '방금 전'
+  if (hours < 24) return `${hours}시간 전`
+  if (days < 7) return `${days}일 전`
+
+  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+}
+
+const openReportDetail = (report) => {
+  selectedReport.value = report
+
+  // 리포트 데이터를 pestResult와 growthResult 형식으로 변환
+  pestResult.value = {
+    className: report.pest_class_name,
+    krName: report.pest_kr_name,
+    confidence: report.pest_confidence
+  }
+
+  growthResult.value = {
+    organ: report.organ,
+    organConfidence: report.organ_confidence,
+    stage: report.stage,
+    stageConfidence: report.stage_confidence
+  }
+
+  showPestResult.value = true
+}
+
+const viewAllReports = () => {
+  router.push('/reports')
+}
 
 // 실시간 업데이트 설정
 async function setupRealtime() {
@@ -797,6 +892,7 @@ onMounted(async () => {
   await ensureDevSession()
   await loadUserNickname()
   await loadPlants()
+  await loadRecentReports()
   await setupRealtime()
   await fetchUnreadCount()
   await subscribeToBadgeUpdates()
@@ -806,6 +902,7 @@ onMounted(async () => {
 onActivated(async () => {
   await loadUserNickname()
   await loadPlants()
+  await loadRecentReports()
   await fetchUnreadCount()
 })
 
