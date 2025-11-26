@@ -109,7 +109,12 @@
       </div>
       
       <div v-if="activeTab === 'plants'" class="grid-content">
-        <div v-if="myPlants.length === 0" class="empty-state">
+        <div v-if="!isOwnProfile && userProfile.privacy_plants === 'private'" class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h4>비공개 설정된 정보입니다</h4>
+          <p>이 사용자가 식물 목록을 비공개로 설정했습니다</p>
+        </div>
+        <div v-else-if="myPlants.length === 0" class="empty-state">
           <div class="empty-icon">🪴</div><h4>등록된 식물이 없어요</h4>
         </div>
         <div v-else class="plants-grid">
@@ -136,7 +141,12 @@
       </div>
 
       <div v-if="activeTab === 'bookmarks'" class="grid-content">
-        <div v-if="bookmarkedPosts.length === 0" class="empty-state">
+        <div v-if="!isOwnProfile && userProfile.privacy_bookmarks === 'private'" class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h4>비공개 설정된 정보입니다</h4>
+          <p>이 사용자가 저장된 게시글을 비공개로 설정했습니다</p>
+        </div>
+        <div v-else-if="bookmarkedPosts.length === 0" class="empty-state">
           <div class="empty-icon">🔖</div>
           <h4>저장된 게시글이 없어요</h4>
           <p>마음에 드는 식물을 찾아보세요!</p>
@@ -158,7 +168,12 @@
       </div>
 
       <div v-if="activeTab === 'reports'" class="grid-content">
-        <div v-if="analysisReports.length === 0" class="empty-state">
+        <div v-if="!isOwnProfile && userProfile.privacy_reports === 'private'" class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h4>비공개 설정된 정보입니다</h4>
+          <p>이 사용자가 리포트를 비공개로 설정했습니다</p>
+        </div>
+        <div v-else-if="analysisReports.length === 0" class="empty-state">
           <div class="empty-icon">📋</div>
           <h4>AI 분석 리포트가 없어요</h4>
           <p v-if="isOwnProfile">카메라로 식물을 촬영하고 AI 분석을 받아보세요!</p>
@@ -266,19 +281,22 @@ const availableTitles = [
   { id: 8, name: '식물 수집가', emoji: '🏆' }
 ]
 
-const userProfile = ref({ 
-  level: '새싹 초보 🌱', 
-  bio: '', 
-  location: '', 
-  verified: true, 
-  rating: 4.8, 
-  reviewCount: 124, 
-  trustScore: 95, 
+const userProfile = ref({
+  level: '새싹 초보 🌱',
+  bio: '',
+  location: '',
+  verified: true,
+  rating: 4.8,
+  reviewCount: 124,
+  trustScore: 95,
   badges: [
-    { type: 'verified', icon: '✅', text: '본인인증' }, 
-    { type: 'seller', icon: '🏆', text: '우수판매자' }, 
+    { type: 'verified', icon: '✅', text: '본인인증' },
+    { type: 'seller', icon: '🏆', text: '우수판매자' },
     { type: 'expert', icon: '🌿', text: '식물전문가' }
-  ] 
+  ],
+  privacy_plants: 'public',
+  privacy_bookmarks: 'private',
+  privacy_reports: 'public'
 })
 
 const userStats = ref({ 
@@ -333,17 +351,20 @@ const loadProfile = async () => {
     // 1. 유저 기본 정보
     const { data, error } = await supabase
       .from('Users')
-      .select('name, avatar_url, bio, location, titleId')
+      .select('name, avatar_url, bio, location, titleId, privacy_plants, privacy_bookmarks, privacy_reports')
       .eq('id', targetId)
       .single()
-    
+
     if (error && error.code !== 'PGRST116') throw error
-    
+
     if (data) {
       nickname.value = data.name || '알 수 없는 사용자'
       profileImage.value = data.avatar_url || profileImageUrl
       userProfile.value.bio = data.bio || ''
       userProfile.value.location = data.location || ''
+      userProfile.value.privacy_plants = data.privacy_plants || 'public'
+      userProfile.value.privacy_bookmarks = data.privacy_bookmarks || 'private'
+      userProfile.value.privacy_reports = data.privacy_reports || 'public'
       if (data.titleId) {
         const t = availableTitles.find(item => item.id === data.titleId)
         if(t) userProfile.value.level = `${t.name} ${t.emoji}`
@@ -367,17 +388,21 @@ const loadProfile = async () => {
       userStats.value.salesCount = postsData.filter(p => p.status === 'sold').length
     }
 
-    // 3. 식물 로드 (센서 데이터 포함)
-    const { data: plantsData } = await supabase
-      .from('User_Plants')
-      .select(`
-        id, name, photos, created_at, updated_at,
-        sensor_data:sensor_data!User_Plants_sensor_data_fkey (
-          humidity, temp, light
-        )
-      `)
-      .eq('user_id', targetId)
-      .order('created_at', { ascending: false })
+    // 3. 식물 로드 (센서 데이터 포함) - 공개 범위 체크
+    let plantsData = null
+    if (targetId === currentUserId.value || userProfile.value.privacy_plants === 'public') {
+      const { data } = await supabase
+        .from('User_Plants')
+        .select(`
+          id, name, photos, created_at, updated_at,
+          sensor_data:sensor_data!User_Plants_sensor_data_fkey (
+            humidity, temp, light
+          )
+        `)
+        .eq('user_id', targetId)
+        .order('created_at', { ascending: false })
+      plantsData = data
+    }
     
     if (plantsData) {
       myPlants.value = plantsData.map(p => {
@@ -413,22 +438,24 @@ const loadProfile = async () => {
       userStats.value.plantsCount = myPlants.value.length
     }
 
-    // 4. 북마크 로드
-    if (targetId === currentUserId.value) {
-      const { data: bookmarksData, error: bookmarkError } = await supabase
-        .from('bookmarks')
-        .select(`
-          post_id,
-          posts:post_id (*) 
-        `) 
-        .eq('user_id', currentUserId.value)
-          
-      if (bookmarkError) {
-        console.error('북마크 로드 에러:', bookmarkError)
-      } else if (bookmarksData) {
-        bookmarkedPosts.value = bookmarksData
-          .map(b => b.posts)
-          .filter(post => post !== null)
+    // 4. 북마크 로드 - 공개 범위 체크
+    if (targetId === currentUserId.value || userProfile.value.privacy_bookmarks === 'public') {
+      if (targetId === currentUserId.value) {
+        const { data: bookmarksData, error: bookmarkError } = await supabase
+          .from('bookmarks')
+          .select(`
+            post_id,
+            posts:post_id (*)
+          `)
+          .eq('user_id', currentUserId.value)
+
+        if (bookmarkError) {
+          console.error('북마크 로드 에러:', bookmarkError)
+        } else if (bookmarksData) {
+          bookmarkedPosts.value = bookmarksData
+            .map(b => b.posts)
+            .filter(post => post !== null)
+        }
       }
     }
 
@@ -445,6 +472,12 @@ const loadProfile = async () => {
 
 const loadAnalysisReports = async (targetId) => {
   try {
+    // 공개 범위 체크
+    if (targetId !== currentUserId.value && userProfile.value.privacy_reports === 'private') {
+      analysisReports.value = []
+      return
+    }
+
     const { data, error } = await supabase
       .from('analysis_reports')
       .select('*')
