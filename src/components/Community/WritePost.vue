@@ -12,40 +12,21 @@
     </header>
 
     <div class="writepost__content">
-      <!-- 이미지 미리보기 -->
-      <div class="writepost__image-preview" v-if="imagePreview">
-        <img :src="imagePreview" alt="Preview" />
-        <button class="remove-image-btn" @click="removeImage">✕</button>
-      </div>
-
-      <!-- 이미지 업로드 -->
-      <div class="writepost__image-upload" v-else>
-        <input
-          type="file"
-          id="file"
-          class="writepost__inputfile"
-          accept="image/*"
-          @change="handleImageSelect"
-          ref="fileInput"
-        />
-        <label for="file" class="writepost__plus-button">
-          <span class="plus-icon">+</span>
-          <span class="upload-text">사진 추가</span>
-        </label>
-      </div>
-
       <!-- 입력 폼 -->
       <div class="writepost__form">
         <div class="form-group">
-          <label class="form-label">식물 이름 *</label>
-          <input
-            v-model="formData.title"
-            type="text"
-            placeholder="예: 몬스테라 알보"
-            class="form-input"
-            maxlength="50"
-          />
-          <span class="char-count">{{ formData.title.length }}/50</span>
+          <label class="form-label">내 식물 선택 *</label>
+          <div class="plant-select-trigger" @click="openPlantModal">
+            <div class="plant-thumb" :style="{ backgroundImage: selectedPlant?.photo ? `url(${selectedPlant.photo})` : '' }">
+              <span v-if="!selectedPlant?.photo" class="thumb-placeholder">🌿</span>
+            </div>
+            <div class="plant-meta">
+              <div class="plant-name">{{ selectedPlant?.name || '등록된 식물을 선택하세요' }}</div>
+              <div class="plant-id" v-if="selectedPlant">#{{ selectedPlant.id.slice(0, 8) }}</div>
+            </div>
+            <div class="plant-chevron">▼</div>
+          </div>
+          <small class="input-hint" v-if="!userPlants.length">등록된 식물이 없습니다. 먼저 식물을 등록해주세요.</small>
         </div>
 
         <div class="form-group">
@@ -107,6 +88,34 @@
         </div>
       </div>
     </div>
+
+    <div v-if="showPlantModal" class="plant-select-modal" @click.self="showPlantModal = false">
+      <div class="plant-select-panel">
+        <div class="plant-select-header">
+          <h4 class="plant-select-title">내 식물 선택</h4>
+          <button class="plant-select-close" @click="showPlantModal = false">✕</button>
+        </div>
+        <div class="plant-select-list" v-if="userPlants.length">
+          <div
+            v-for="plant in userPlants"
+            :key="plant.id"
+            class="plant-option"
+            :class="{ active: selectedPlantId === plant.id }"
+            @click="selectPlant(plant.id)"
+          >
+            <div class="plant-thumb" :style="{ backgroundImage: plant.photo ? `url(${plant.photo})` : '' }">
+              <span v-if="!plant.photo" class="thumb-placeholder">🌿</span>
+            </div>
+            <div class="plant-meta">
+              <div class="plant-name">{{ plant.name }}</div>
+              <div class="plant-id">#{{ plant.id.slice(0, 8) }}</div>
+            </div>
+            <div class="plant-check" v-if="selectedPlantId === plant.id">✔</div>
+          </div>
+        </div>
+        <div v-else class="plant-empty">등록된 식물이 없습니다.</div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -123,11 +132,12 @@ export default {
     const route = useRoute()
     const editPostId = route.query.id
 
-    const fileInput = ref(null)
     const uploading = ref(false)
+    const userPlants = ref([])
+    const selectedPlantId = ref('')
+    const showPlantModal = ref(false)
 
-    const formData = ref({
-      title: '',
+  const formData = ref({
       price: null,
       text: '',
       tags: [],
@@ -140,12 +150,14 @@ export default {
     const defaultAvatar = 'https://picsum.photos/100?random=1'
 
     // 유효성 검사
+    const selectedPlant = computed(() => userPlants.value.find(p => p.id === selectedPlantId.value))
+
     const isValid = computed(() => {
+      const hasPlant = selectedPlantId.value || editPostId
       return (
-        formData.value.title.trim() !== '' &&
+        hasPlant &&
         formData.value.price > 0 &&
-        formData.value.text.trim() !== '' &&
-        imagePreview.value !== null
+        formData.value.text.trim() !== ''
       )
     })
 
@@ -197,33 +209,10 @@ export default {
       }
     }
 
-    // 이미지 선택
-    const handleImageSelect = (event) => {
-      const file = event.target.files[0]
-      if (file) {
-        if (file.size > 5 * 1024 * 1024) {
-          alert('이미지 크기는 5MB 이하여야 합니다.')
-          return
-        }
-
-        formData.value.image = file
-
-        const reader = new FileReader()
-        reader.onload = (e) => {
-          imagePreview.value = e.target.result
-        }
-        reader.readAsDataURL(file)
-      }
-    }
-
-    // 이미지 제거
-    const removeImage = () => {
-      formData.value.image = null
-      imagePreview.value = null
-      if (fileInput.value) {
-        fileInput.value.value = ''
-      }
-    }
+    const handleImageSelect = () => {}
+    const removeImage = () => {}
+    const selectPlant = (id) => { selectedPlantId.value = id; showPlantModal.value = false }
+    const openPlantModal = () => { if (userPlants.value.length) showPlantModal.value = true }
 
     // 해시태그 추가
     const addTag = (event) => {
@@ -245,46 +234,16 @@ export default {
       formData.value.tags.splice(index, 1)
     }
 
-    // 이미지 업로드
-    const uploadImage = async (file) => {
-      try {
-        const fileExt = file.name.split('.').pop()
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`
-        const filePath = `posts/${fileName}`
-
-        const { error } = await supabase.storage
-          .from('plant-images')
-          .upload(filePath, file)
-
-        if (error) throw error
-
-        const { data: { publicUrl } } = supabase.storage
-          .from('plant-images')
-          .getPublicUrl(filePath)
-
-        return publicUrl
-      } catch (error) {
-        console.error('이미지 업로드 실패:', error)
-        throw error
-      }
-    }
-
     // 게시물 제출 (등록/수정)
     const submitPost = async () => {
       uploading.value = true
 
       try {
-        let imageUrl = formData.value.image 
-        // 새 이미지가 업로드된 경우 (File 객체인 경우)
-        if (formData.value.image && typeof formData.value.image !== 'string') {
-          imageUrl = await uploadImage(formData.value.image)
-        } else if (imagePreview.value && typeof formData.value.image !== 'object') {
-          // 이미지가 변경되지 않은 경우 기존 URL 유지
-          imageUrl = imagePreview.value
-        }
+        const selectedPlant = userPlants.value.find(p => p.id === selectedPlantId.value)
+        let imageUrl = selectedPlant?.photo || selectedPlant?.photos?.[0]?.url || imagePreview.value || null
 
         const postData = {
-          title: formData.value.title,
+          title: selectedPlant?.name || formData.value.title,
           price: formData.value.price,
           text: formData.value.text,
           tags: formData.value.tags,
@@ -352,8 +311,29 @@ export default {
       }
     }
 
+    const loadUserPlants = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+        const { data } = await supabase
+          .from('User_Plants')
+          .select('id, name, photos')
+          .eq('user_id', user.id)
+        if (data) {
+          userPlants.value = data.map(p => ({
+            id: p.id,
+            name: p.name,
+            photo: p.photos?.[0]?.url || null
+          }))
+        }
+      } catch (err) {
+        console.error('내 식물 조회 실패:', err)
+      }
+    }
+
     onMounted(async () => {
       await fetchUserInfo()
+      await loadUserPlants()
       
       // 수정 모드라면 기존 데이터 불러오기
       if (editPostId) {
@@ -364,12 +344,12 @@ export default {
           .single()
           
         if (!error && data) {
+          selectedPlantId.value = data.plant_id || ''
           formData.value.title = data.title
           formData.value.price = data.price
           formData.value.text = data.text
           formData.value.tags = data.tags || []
           imagePreview.value = data.image 
-          // 수정 시에는 기존 이미지 URL을 formData에 넣어둠 (변경 감지용)
           formData.value.image = data.image 
         }
       } else {
@@ -386,14 +366,19 @@ export default {
       isValid,
       formattedDate,
       uploading,
-      fileInput,
       handleImageSelect,
       removeImage,
       addTag,
       removeTag,
       submitPost,
       goBack,
-      goHome
+      goHome,
+      userPlants,
+      selectedPlantId,
+      selectedPlant,
+      showPlantModal,
+      openPlantModal,
+      selectPlant
     }
   }
 }
@@ -485,81 +470,56 @@ export default {
 }
 
 /* 이미지 업로드 */
-.writepost__image-upload {
-  margin-bottom: 20px;
-  background: white;
-  border: 2px dashed #ddd;
-  border-radius: 12px;
-  padding: 40px;
-  text-align: center;
-  transition: all 0.3s;
-}
+/* (이미지 업로드/미리보기 섹션 제거) */
 
-.writepost__image-upload:hover {
-  border-color: #568265;
-  background-color: #f8faf9;
-}
-
-.writepost__inputfile {
-  display: none;
-}
-
-.writepost__plus-button {
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  color: #666;
-}
-
-.plus-icon {
-  font-size: 48px;
-  font-weight: 300;
-  color: #568265;
-}
-
-.upload-text {
-  font-size: 14px;
-  color: #666;
-}
-
-/* 이미지 미리보기 */
-.writepost__image-preview {
-  position: relative;
-  margin-bottom: 20px;
-  border-radius: 12px;
-  overflow: hidden;
-  background: white;
-}
-
-.writepost__image-preview img {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.remove-image-btn {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 32px;
-  height: 32px;
-  font-size: 18px;
-  cursor: pointer;
+.plant-select-trigger {
   display: flex;
   align-items: center;
-  justify-content: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
   transition: all 0.2s;
 }
 
-.remove-image-btn:hover {
-  background: rgba(0, 0, 0, 0.8);
+.plant-select-trigger:hover {
+  border-color: #568265;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
 }
+
+.plant-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #f0f0f0;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.thumb-placeholder { opacity: 0.6; }
+
+.plant-meta { flex: 1; min-width: 0; }
+.plant-name { font-weight: 600; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plant-id { font-size: 12px; color: #999; }
+.plant-chevron { color: #777; font-size: 12px; }
+
+.plant-select-modal { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 2000; padding: 16px; }
+.plant-select-panel { width: 100%; max-width: 420px; background: #fff; border-radius: 12px; padding: 16px; box-shadow: 0 12px 30px rgba(0,0,0,0.2); max-height: 80vh; display: flex; flex-direction: column; }
+.plant-select-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.plant-select-title { margin: 0; font-size: 16px; font-weight: 700; }
+.plant-select-close { background: none; border: none; font-size: 18px; cursor: pointer; }
+.plant-select-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 4px; }
+.plant-option { display: flex; align-items: center; gap: 10px; padding: 12px; border: 1px solid #e0e0e0; border-radius: 10px; background: #fff; cursor: pointer; transition: all 0.2s; }
+.plant-option:hover { border-color: #568265; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.plant-option.active { border-color: #568265; background: #f3f8f4; box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+.plant-check { color: #568265; font-weight: 700; }
+.plant-empty { text-align: center; padding: 20px; color: #777; font-size: 14px; }
 
 /* 폼 */
 .writepost__form {
@@ -572,6 +532,48 @@ export default {
   margin-bottom: 24px;
   position: relative;
 }
+
+.plant-select {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 12px;
+}
+
+.plant-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.plant-option:hover { border-color: #568265; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+.plant-option.active { border-color: #568265; background: #f3f8f4; box-shadow: 0 6px 16px rgba(0,0,0,0.08); }
+
+.plant-thumb {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #f0f0f0;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.thumb-placeholder { opacity: 0.6; }
+
+.plant-meta { flex: 1; min-width: 0; }
+.plant-name { font-weight: 600; color: #333; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.plant-id { font-size: 12px; color: #999; }
+
+.plant-check { color: #568265; font-weight: 700; }
 
 .form-label {
   display: block;
