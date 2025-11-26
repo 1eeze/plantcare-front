@@ -703,6 +703,36 @@ export default {
         }
       })
 
+      // 1-1) plant_id가 없는 글 중 일부는 제목/작성자로 User_Plants 매칭해서 plant_id/품질을 채움
+      const missingPlantPosts = slice.filter(p => !p.plant_id && p.user_id && p.title).slice(0, 5)
+      const plantMetaCache = {}
+      for (const post of missingPlantPosts) {
+        try {
+          const { data: plantRow } = await supabase
+            .from('User_Plants')
+            .select('id, message, photos')
+            .eq('user_id', post.user_id)
+            .ilike('name', post.title)
+            .maybeSingle()
+          if (plantRow) {
+            post.plant_id = plantRow.id
+            if (plantRow.message?.quality?.grade) {
+              post.sensorQuality = post.sensorQuality === '-' ? plantRow.message.quality.grade : post.sensorQuality
+              plantMetaCache[plantRow.id] = plantRow
+            }
+            if (plantRow.message?.quality?.confidence !== undefined && plantRow.message.quality.confidence !== null) {
+              post.quality_confidence = plantRow.message.quality.confidence
+            }
+            const photoUrl = this.extractPhotoUrl(plantRow.photos)
+            if (photoUrl) {
+              plantMetaCache[plantRow.id] = plantMetaCache[plantRow.id] || plantRow
+            }
+          }
+        } catch (err) {
+          console.error('plant_id 보완 실패:', err)
+        }
+      }
+
       const plantIds = slice.map(p => p.plant_id).filter(Boolean)
       if (plantIds.length === 0) return
 
@@ -715,16 +745,15 @@ export default {
         const qualityMap = {}
         const qualityConfidenceMap = {}
         const photoMap = {}
-        if (plantMeta) {
-          plantMeta.forEach(pm => {
-            qualityMap[pm.id] = pm.message?.quality?.grade || '-'
-            if (pm.message?.quality && pm.message.quality.confidence !== undefined) {
-              qualityConfidenceMap[pm.id] = pm.message.quality.confidence
-            }
-            const photoUrl = this.extractPhotoUrl(pm.photos)
-            if (photoUrl) photoMap[pm.id] = photoUrl
-          })
-        }
+        const mergedPlantMeta = [...(plantMeta || []), ...Object.values(plantMetaCache)]
+        mergedPlantMeta.forEach(pm => {
+          qualityMap[pm.id] = pm.message?.quality?.grade || '-'
+          if (pm.message?.quality && pm.message.quality.confidence !== undefined) {
+            qualityConfidenceMap[pm.id] = pm.message.quality.confidence
+          }
+          const photoUrl = this.extractPhotoUrl(pm.photos)
+          if (photoUrl) photoMap[pm.id] = photoUrl
+        })
 
         // 3) 센서 데이터 한번에 조회
         const { data: sensorRows, error: sensorError } = await supabase
