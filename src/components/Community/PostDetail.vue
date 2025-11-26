@@ -38,6 +38,18 @@
       <p class="price" v-if="post.price">{{ formatPrice(post.price) }}</p>
       <p class="description">{{ post.text }}</p>
 
+      <div class="quality-detail">
+        <div class="quality-info-row">
+          <span class="quality-label">신뢰도</span>
+          <span class="quality-value">
+            <template v-if="qualityConfidenceDisplay !== null && qualityConfidenceDisplay !== undefined && !Number.isNaN(Number(qualityConfidenceDisplay))">
+              {{ (Number(qualityConfidenceDisplay) * 100).toFixed(1) }}%
+            </template>
+            <template v-else>데이터 없음</template>
+          </span>
+        </div>
+      </div>
+
       <!-- ✅ 센서값: 항상 보이되 값은 formatSensor로 처리 -->
       <div v-if="sensorStatus !== null" class="sensor-summary">
         <div class="sensor-chip">
@@ -180,6 +192,13 @@ const fetchPost = async () => {
   post.value = data
   likeCount.value = data.likes || 0
 
+  if (data.quality_grade) {
+    sensorQualityGrade.value = data.quality_grade
+  }
+  if (data.quality_confidence !== null && data.quality_confidence !== undefined) {
+    sensorQualityConfidence.value = data.quality_confidence
+  }
+
   const localQuality = loadQualityLocally(postId)
   if (localQuality?.grade) {
     sensorQualityGrade.value = localQuality.grade
@@ -309,6 +328,7 @@ const formatSensor = (val) =>
 
 const sensorPlantId = ref(null)
 const sensorQualityGrade = ref('-')
+const sensorQualityConfidence = ref(null)
 const measuringQuality = ref(false)
 const QUALITY_STORAGE_KEY = 'post-quality-grades'
 
@@ -357,9 +377,42 @@ const computeQualityFromSensor = (status) => {
   return 'C'
 }
 
+const computeQualityConfidence = (status) => {
+  if (!status) return null
+  const toNum = (v) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const humidity = toNum(status.humidity)
+  const temp = toNum(status.temp)
+  const light = toNum(status.light)
+  const readings = [humidity, temp, light]
+
+  // 센서값이 모두 없거나 0이면 계산하지 않음 (DB 기본값 0 방어)
+  const hasValue = readings.some(v => v !== null && v !== undefined && v !== 0)
+  if (!hasValue) return null
+  if (readings.some(v => v === null || v === undefined)) return null
+
+  let score = 0
+  const inRange = (val, min, max) => val >= min && val <= max
+  if (inRange(humidity, 40, 70)) score++
+  if (inRange(temp, 18, 28)) score++
+  if (inRange(light, 40, 80)) score++
+
+  return +(score / 3).toFixed(2)
+}
+
 const qualityDisplay = computed(() => {
   if (sensorQualityGrade.value && sensorQualityGrade.value !== '-') return sensorQualityGrade.value
   return computeQualityFromSensor(sensorStatus.value)
+})
+
+const qualityConfidenceDisplay = computed(() => {
+  if (sensorQualityConfidence.value !== null && sensorQualityConfidence.value !== undefined) {
+    const num = Number(sensorQualityConfidence.value)
+    if (!Number.isNaN(num)) return num
+  }
+  return computeQualityConfidence(sensorStatus.value)
 })
 
 const QUALITY_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/quality'
@@ -426,6 +479,9 @@ const analyzeQuality = async (imageFile, plantId) => {
     if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
       const prediction = data.predictions[0]
       sensorQualityGrade.value = prediction.grade || '-'
+      if (prediction.confidence !== undefined) {
+        sensorQualityConfidence.value = prediction.confidence
+      }
       saveQualityLocally(postId, plantId, sensorQualityGrade.value)
       await persistQualityGrade(plantId, sensorQualityGrade.value)
     } else {
@@ -452,7 +508,14 @@ const persistQualityGrade = async (plantId, grade) => {
       .eq('id', plantId)
       .maybeSingle()
     const message = current?.message || {}
-    const nextMessage = { ...message, quality: { grade, updated_at: new Date().toISOString() } }
+    const nextMessage = { 
+      ...message, 
+      quality: { 
+        grade, 
+        confidence: qualityConfidenceDisplay.value ?? sensorQualityConfidence.value ?? null,
+        updated_at: new Date().toISOString() 
+      } 
+    }
     await supabase
       .from('User_Plants')
       .update({ message: nextMessage })
@@ -469,7 +532,7 @@ const loadSensorStatus = async (userId, title) => {
   // 기본값(모두 '-') 유지
   sensorStatus.value = { humidity: null, temp: null, light: null }
   sensorPlantId.value = null
-  sensorQualityGrade.value = '-'
+  if (!sensorQualityGrade.value) sensorQualityGrade.value = '-'
 
   try {
     // 로컬에 저장된 plantId/grade 우선 반영
@@ -490,7 +553,9 @@ const loadSensorStatus = async (userId, title) => {
         .eq('id', plantId)
         .maybeSingle()
       const mq = plantMeta?.message?.quality?.grade
+      const mc = plantMeta?.message?.quality?.confidence
       if (mq) sensorQualityGrade.value = mq
+      if (mc !== undefined && mc !== null) sensorQualityConfidence.value = mc
     } else {
       // 2순위: User_Plants에서 userId + title 매칭
       if (!userId || !title) {
@@ -511,7 +576,9 @@ const loadSensorStatus = async (userId, title) => {
           plantId = plantRow.id
           sensorPlantId.value = plantId
           const mq = plantRow.message?.quality?.grade
+          const mc = plantRow.message?.quality?.confidence
           if (mq) sensorQualityGrade.value = mq
+          if (mc !== undefined && mc !== null) sensorQualityConfidence.value = mc
         } else {
           // 이름 매칭 실패: 가장 최근 업데이트 식물로 fallback
           const { data: latestPlant, error: latestErr } = await supabase
@@ -525,7 +592,9 @@ const loadSensorStatus = async (userId, title) => {
             plantId = latestPlant.id
             sensorPlantId.value = plantId
             const mq = latestPlant.message?.quality?.grade
+            const mc = latestPlant.message?.quality?.confidence
             if (mq) sensorQualityGrade.value = mq
+            if (mc !== undefined && mc !== null) sensorQualityConfidence.value = mc
           }
         }
       }
@@ -564,6 +633,9 @@ const loadSensorStatus = async (userId, title) => {
 
     if (sensorQualityGrade.value === '-') {
       sensorQualityGrade.value = computeQualityFromSensor(sensorStatus.value)
+    }
+    if (sensorQualityConfidence.value === null || sensorQualityConfidence.value === undefined) {
+      sensorQualityConfidence.value = computeQualityConfidence(sensorStatus.value)
     }
 
     console.log('[센서] 로딩 완료:', sensorStatus.value)
@@ -619,6 +691,10 @@ onMounted(fetchPost)
 .date { font-size: 13px; color: #999; margin-bottom: 16px; }
 .price { font-size: 18px; font-weight: 700; color: #2c3e50; margin-bottom: 16px; }
 .description { font-size: 15px; line-height: 1.6; color: #333; white-space: pre-wrap; margin-bottom: 20px; }
+.quality-detail { background: #f8f9fa; border-radius: 8px; padding: 12px; margin: 12px 0 16px; border-left: 3px solid #ffd700; }
+.quality-info-row { display: flex; justify-content: space-between; align-items: center; }
+.quality-label { font-size: 12px; color: #666; font-weight: 500; }
+.quality-value { font-size: 13px; font-weight: 600; color: #2c3e50; }
 
 /* ✅ 센서칩 스타일 */
 .sensor-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }

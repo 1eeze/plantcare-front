@@ -107,11 +107,11 @@
         <div class="post-content" role="button" tabindex="0" @click="goToPost(post.id)" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
           <p class="post-description">{{ post.text }}</p>
           
-          <!-- 품질 신뢰도 (있을 때만) -->
-          <div v-if="post.quality_confidence !== null && post.quality_confidence !== undefined" class="quality-detail">
+          <!-- 품질 신뢰도 -->
+          <div class="quality-detail">
             <div class="quality-info-row">
               <span class="quality-label">신뢰도</span>
-              <span class="quality-value">{{ (post.quality_confidence * 100).toFixed(1) }}%</span>
+              <span class="quality-value">{{ formatQualityConfidence(post) }}</span>
             </div>
           </div>
 
@@ -469,6 +469,20 @@ export default {
       return labels[grade] || '등급 미분류'
     },
 
+    getQualityConfidenceValue(post) {
+      if (!post) return null
+      if (post.quality_confidence !== null && post.quality_confidence !== undefined) {
+        return post.quality_confidence
+      }
+
+      const computed = this.computeQualityConfidence(post.sensorStatus)
+      if (computed === null || computed === undefined) return null
+
+      // 캐싱해 재계산 최소화
+      post.quality_confidence = computed
+      return computed
+    },
+
     onCommentAdded(postId) {
       const post = this.posts.find(p => p.id === postId)
       if (post) post.comments++
@@ -530,8 +544,18 @@ export default {
     },
     computeQualityConfidence(status) {
       if (!status) return null
-      const { humidity, temp, light } = status
+      const toNum = (v) => {
+        const n = Number(v)
+        return Number.isFinite(n) ? n : null
+      }
+      const humidity = toNum(status.humidity)
+      const temp = toNum(status.temp)
+      const light = toNum(status.light)
       const readings = [humidity, temp, light]
+
+      // 센서값이 모두 없거나 0이면 계산하지 않음 (DB 기본값 0 방어)
+      const hasValue = readings.some(v => v !== null && v !== undefined && v !== 0)
+      if (!hasValue) return null
       if (readings.some(v => v === null || v === undefined)) return null
 
       let score = 0
@@ -542,9 +566,13 @@ export default {
 
       return +(score / 3).toFixed(2)
     },
+    formatQualityConfidence(post) {
+      const val = this.getQualityConfidenceValue(post)
+      if (val === null || val === undefined || Number.isNaN(Number(val))) return '데이터 없음'
+      return `${(Number(val) * 100).toFixed(1)}%`
+    },
     async attachSensorStatus(posts) {
-      const limit = 10
-      const slice = posts.slice(0, limit)
+      const slice = posts
 
       // 1) 로컬 품질 캐시 반영
       let localCache = {}
