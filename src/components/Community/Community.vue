@@ -108,7 +108,11 @@
               <span class="chip-label">☀️ 조도</span>
               <span class="chip-value">{{ formatSensor(post.sensorStatus.light) }} lux</span>
             </div>
-          </div>
+              <div class="sensor-chip quality">
+                <span class="chip-label">🌿 품질</span>
+                <span class="chip-value">{{ post.sensorQuality || computeQuality(post.sensorStatus) || '-' }}</span>
+              </div>
+            </div>
           <div v-if="post.tags && post.tags.length > 0" class="tags">
             <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
           </div>
@@ -355,16 +359,17 @@ export default {
 
         // 3. 데이터 병합
       const enriched = postsData.map(post => ({
-        ...post,
-        date: this.formatDate(post.created_at),
-        liked: myLikedIds.has(post.id),
-        bookmarked: myBookmarkedIds.has(post.id),
-        // DB 값 그대로 사용 (없으면 0)
-        likes: post.likes || 0,
-        comments: post.comments || 0,
-        views: post.views || 0,
-        sensorStatus: { humidity: null, temp: null, light: null }
-      }))
+          ...post,
+          date: this.formatDate(post.created_at),
+          liked: myLikedIds.has(post.id),
+          bookmarked: myBookmarkedIds.has(post.id),
+          // DB 값 그대로 사용 (없으면 0)
+          likes: post.likes || 0,
+          comments: post.comments || 0,
+          views: post.views || 0,
+          sensorStatus: { humidity: null, temp: null, light: null },
+          sensorQuality: '-'
+        }))
         this.posts = enriched
         await this.attachSensorStatus(enriched)
 
@@ -460,26 +465,87 @@ export default {
     formatSensor(val) {
       return (val === null || val === undefined || Number.isNaN(val)) ? '-' : val
     },
+    computeQuality(status) {
+      if (!status) return '-'
+      const { humidity, temp, light } = status
+      if (
+        humidity === null || humidity === undefined ||
+        temp === null || temp === undefined ||
+        light === null || light === undefined
+      ) return '-'
+
+      let score = 0
+      const inRange = (val, min, max) => val >= min && val <= max
+      if (inRange(humidity, 40, 70)) score++
+      if (inRange(temp, 18, 28)) score++
+      if (inRange(light, 40, 80)) score++
+
+      if (score === 3) return 'A'
+      if (score === 2) return 'B'
+      return 'C'
+    },
     async attachSensorStatus(posts) {
       const limit = 10
       const slice = posts.slice(0, limit)
       await Promise.all(slice.map(async (post) => {
         try {
+          // 로컬 저장된 품질/식물 우선 적용
+          try {
+            const raw = localStorage.getItem('post-quality-grades')
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              if (parsed[post.id]?.grade) {
+                post.sensorQuality = parsed[post.id].grade
+                if (!post.plant_id && parsed[post.id]?.plantId) {
+                  post.plant_id = parsed[post.id].plantId
+                }
+              }
+            }
+          } catch (e) {
+            console.error('로컬 품질 로드 실패:', e)
+          }
+
           let plantId = post.plant_id || null
 
           if (!plantId) {
             // 제목과 식물이름 매칭
             const { data: plantRow, error: plantError } = await supabase
               .from('User_Plants')
-              .select('id')
+              .select('id, message')
               .eq('user_id', post.user_id)
               .ilike('name', post.title)
               .maybeSingle()
             if (!plantError && plantRow) {
               plantId = plantRow.id
+              post.sensorQuality = plantRow.message?.quality?.grade || '-'
             } else if (plantError && plantError.code !== 'PGRST116') {
               console.error('센서 식물 매칭 오류:', plantError)
             }
+          } else {
+            const { data: plantMeta } = await supabase
+              .from('User_Plants')
+              .select('message')
+              .eq('id', plantId)
+              .maybeSingle()
+            if (plantMeta?.message?.quality?.grade) {
+              post.sensorQuality = plantMeta.message.quality.grade
+            }
+          }
+
+          // 로컬에 저장된 품질 값이 있으면 우선 반영
+          try {
+            const raw = localStorage.getItem('post-quality-grades')
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              if (parsed[post.id]?.grade) {
+                post.sensorQuality = parsed[post.id].grade
+                if (!plantId && parsed[post.id]?.plantId) {
+                  plantId = parsed[post.id].plantId
+                }
+              }
+            }
+          } catch (e) {
+            console.error('로컬 품질 로드 실패:', e)
           }
 
           if (!plantId) {
@@ -513,6 +579,10 @@ export default {
             humidity: latestVal(data.humidity),
             temp: latestVal(data.temp),
             light: latestVal(data.light)
+          }
+
+          if (!post.sensorQuality || post.sensorQuality === '-') {
+            post.sensorQuality = this.computeQuality(post.sensorStatus)
           }
         } catch (err) {
           console.error('센서 상태 연동 실패:', err)
@@ -867,6 +937,7 @@ export default {
 .sensor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; background: linear-gradient(135deg, #eef7f0, #e4f2ff); color: #2f4858; font-size: 12px; border: 1px solid #d3e5dd; }
 .chip-label { font-weight: 700; color: #4a8063; letter-spacing: -0.2px; }
 .chip-value { font-weight: 700; color: #1e4d6b; }
+.sensor-chip.quality { background: linear-gradient(135deg, #fff3e0, #ffe9d6); border-color: #ffd2a8; }
 
 .tags {
   display: flex;

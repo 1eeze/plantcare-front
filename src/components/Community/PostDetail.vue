@@ -52,6 +52,17 @@
           <span class="chip-label">☀️ 조도</span>
           <span class="chip-value">{{ formatSensor(sensorStatus.light) }} lux</span>
         </div>
+        <div class="sensor-chip quality">
+          <span class="chip-label">🌿 품질</span>
+          <span class="chip-value">{{ qualityDisplay }}</span>
+          <button
+            v-if="qualityDisplay === '-' && isOwner"
+            class="measure-btn"
+            @click="goMeasureQuality"
+          >
+            측정하기
+          </button>
+        </div>
       </div>
 
       <div class="tags" v-if="post.tags && post.tags.length">
@@ -168,6 +179,12 @@ const fetchPost = async () => {
 
   post.value = data
   likeCount.value = data.likes || 0
+
+  const localQuality = loadQualityLocally(postId)
+  if (localQuality?.grade) {
+    sensorQualityGrade.value = localQuality.grade
+    if (localQuality.plantId) sensorPlantId.value = localQuality.plantId
+  }
 
   // ✅ post 값이 셋업된 뒤에 센서값 시도 (userId, title 넘겨줌)
   await loadSensorStatus(data.user_id, data.title)
@@ -290,17 +307,188 @@ const getStatusText = (s) =>
 const formatSensor = (val) =>
   val === null || val === undefined || Number.isNaN(val) ? '-' : val
 
+const sensorPlantId = ref(null)
+const sensorQualityGrade = ref('-')
+const measuringQuality = ref(false)
+const QUALITY_STORAGE_KEY = 'post-quality-grades'
+
+const saveQualityLocally = (postId, plantId, grade) => {
+  try {
+    const raw = localStorage.getItem(QUALITY_STORAGE_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    parsed[postId] = { grade, plantId }
+    localStorage.setItem(QUALITY_STORAGE_KEY, JSON.stringify(parsed))
+  } catch (err) {
+    console.error('품질 로컬 저장 실패:', err)
+  }
+}
+
+const loadQualityLocally = (postId) => {
+  try {
+    const raw = localStorage.getItem(QUALITY_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    return parsed?.[postId] || null
+  } catch (err) {
+    console.error('품질 로컬 로드 실패:', err)
+    return null
+  }
+}
+
+const computeQualityFromSensor = (status) => {
+  if (!status) return '-'
+  const { humidity, temp, light } = status
+  if (
+    humidity === null || humidity === undefined ||
+    temp === null || temp === undefined ||
+    light === null || light === undefined
+  ) return '-'
+
+  let score = 0
+  const inRange = (val, min, max) => val >= min && val <= max
+  if (inRange(humidity, 40, 70)) score++
+  if (inRange(temp, 18, 28)) score++
+  if (inRange(light, 40, 80)) score++
+
+  if (score === 3) return 'A'
+  if (score === 2) return 'B'
+  return 'C'
+}
+
+const qualityDisplay = computed(() => {
+  if (sensorQualityGrade.value && sensorQualityGrade.value !== '-') return sensorQualityGrade.value
+  return computeQualityFromSensor(sensorStatus.value)
+})
+
+const QUALITY_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/quality'
+
+const ensurePlantId = async () => {
+  if (sensorPlantId.value) return sensorPlantId.value
+  const userId = post.value?.user_id
+  const title = post.value?.title
+  if (!userId || !title) return null
+  const { data: plantRow } = await supabase
+    .from('User_Plants')
+    .select('id')
+    .eq('user_id', userId)
+    .ilike('name', title)
+    .maybeSingle()
+  if (plantRow) {
+    sensorPlantId.value = plantRow.id
+    return plantRow.id
+  }
+  return null
+}
+
+const openQualityCapture = async () => {
+  if (measuringQuality.value) return
+  if (!currentUser.value || currentUser.value.id !== post.value?.user_id) {
+    alert('판매자만 품질을 측정할 수 있습니다.')
+    return
+  }
+  const plantId = await ensurePlantId()
+  if (!plantId) {
+    alert('연동된 식물을 찾을 수 없습니다.')
+    return
+  }
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  input.capture = 'environment'
+  input.onchange = async (e) => {
+    const file = e.target.files[0]
+    if (file) await analyzeQuality(file, plantId)
+  }
+  input.click()
+}
+
+const analyzeQuality = async (imageFile, plantId) => {
+  measuringQuality.value = true
+  try {
+    const formData = new FormData()
+    formData.append('file', imageFile)
+
+    const response = await fetch(QUALITY_API_URL, {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('품질 API 오류:', errorText)
+      alert('품질 분석에 실패했습니다. 다시 시도해주세요.')
+      return
+    }
+
+    const data = await response.json()
+    if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
+      const prediction = data.predictions[0]
+      sensorQualityGrade.value = prediction.grade || '-'
+      saveQualityLocally(postId, plantId, sensorQualityGrade.value)
+      await persistQualityGrade(plantId, sensorQualityGrade.value)
+    } else {
+      sensorQualityGrade.value = '-'
+    }
+  } catch (err) {
+    console.error('품질 분석 예외:', err)
+    alert('품질 분석 중 오류가 발생했습니다.')
+  } finally {
+    measuringQuality.value = false
+  }
+}
+
+const goMeasureQuality = () => {
+  openQualityCapture()
+}
+
+const persistQualityGrade = async (plantId, grade) => {
+  if (!plantId || !grade) return
+  try {
+    const { data: current } = await supabase
+      .from('User_Plants')
+      .select('message')
+      .eq('id', plantId)
+      .maybeSingle()
+    const message = current?.message || {}
+    const nextMessage = { ...message, quality: { grade, updated_at: new Date().toISOString() } }
+    await supabase
+      .from('User_Plants')
+      .update({ message: nextMessage })
+      .eq('id', plantId)
+      .eq('user_id', currentUser.value?.id)
+  } catch (err) {
+    console.error('품질 등급 저장 실패:', err)
+    alert('품질 등급을 저장하지 못했습니다. 권한을 확인해주세요.')
+  }
+}
+
 // ✅ plant_id 기반 센서 조회 + 제목/유저 기반 fallback
 const loadSensorStatus = async (userId, title) => {
   // 기본값(모두 '-') 유지
   sensorStatus.value = { humidity: null, temp: null, light: null }
+  sensorPlantId.value = null
+  sensorQualityGrade.value = '-'
 
   try {
-    let plantId = post.value?.plant_id || null
+    // 로컬에 저장된 plantId/grade 우선 반영
+    const localQuality = loadQualityLocally(postId)
+    if (localQuality?.grade) {
+      sensorQualityGrade.value = localQuality.grade
+      if (localQuality.plantId) sensorPlantId.value = localQuality.plantId
+    }
+
+    let plantId = sensorPlantId.value || post.value?.plant_id || null
 
     // 1순위: posts.plant_id 사용
     if (plantId) {
       console.log('[센서] posts.plant_id 사용:', plantId)
+      const { data: plantMeta } = await supabase
+        .from('User_Plants')
+        .select('message')
+        .eq('id', plantId)
+        .maybeSingle()
+      const mq = plantMeta?.message?.quality?.grade
+      if (mq) sensorQualityGrade.value = mq
     } else {
       // 2순위: User_Plants에서 userId + title 매칭
       if (!userId || !title) {
@@ -308,7 +496,7 @@ const loadSensorStatus = async (userId, title) => {
       } else {
         const { data: plantRow, error: plantError } = await supabase
           .from('User_Plants')
-          .select('id, name')
+          .select('id, name, message')
           .eq('user_id', userId)
           .ilike('name', title) // 제목과 식물이름 대소문자/부분매칭
           .maybeSingle()
@@ -319,16 +507,24 @@ const loadSensorStatus = async (userId, title) => {
           }
         } else if (plantRow) {
           plantId = plantRow.id
+          sensorPlantId.value = plantId
+          const mq = plantRow.message?.quality?.grade
+          if (mq) sensorQualityGrade.value = mq
         } else {
           // 이름 매칭 실패: 가장 최근 업데이트 식물로 fallback
           const { data: latestPlant, error: latestErr } = await supabase
             .from('User_Plants')
-            .select('id')
+            .select('id, message')
             .eq('user_id', userId)
             .order('updated_at', { ascending: false })
             .limit(1)
             .maybeSingle()
-          if (!latestErr && latestPlant) plantId = latestPlant.id
+          if (!latestErr && latestPlant) {
+            plantId = latestPlant.id
+            sensorPlantId.value = plantId
+            const mq = latestPlant.message?.quality?.grade
+            if (mq) sensorQualityGrade.value = mq
+          }
         }
       }
     }
@@ -336,6 +532,7 @@ const loadSensorStatus = async (userId, title) => {
     if (!plantId) {
       return
     }
+    sensorPlantId.value = plantId
 
     const { data, error } = await supabase
       .from('sensor_data')
@@ -345,9 +542,8 @@ const loadSensorStatus = async (userId, title) => {
 
     if (error) {
       if (error.code !== 'PGRST116') console.error('[센서] sensor_data 조회 오류:', error)
-      return
     }
-    if (!data) return
+    const sensorData = data || {}
 
     const latestVal = (arr) => {
       if (!arr) return null
@@ -359,12 +555,16 @@ const loadSensorStatus = async (userId, title) => {
     }
 
     sensorStatus.value = {
-      humidity: latestVal(data.humidity),
-      temp: latestVal(data.temp),
-      light: latestVal(data.light)
+      humidity: latestVal(sensorData.humidity),
+      temp: latestVal(sensorData.temp),
+      light: latestVal(sensorData.light)
     }
 
-    console.log('[센서] 로딩 완료:', sensorStatus.value)
+    if (sensorQualityGrade.value === '-') {
+      sensorQualityGrade.value = computeQualityFromSensor(sensorStatus.value)
+    }
+
+  console.log('[센서] 로딩 완료:', sensorStatus.value)
   } catch (err) {
     console.error('[센서] 센서 데이터 조회 실패:', err)
   }
@@ -423,6 +623,9 @@ onMounted(fetchPost)
 .sensor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px; background: linear-gradient(135deg, #eef7f0, #e4f2ff); color: #2f4858; font-size: 13px; border: 1px solid #d3e5dd; }
 .chip-label { font-weight: 700; color: #4a8063; letter-spacing: -0.2px; }
 .chip-value { font-weight: 700; color: #1e4d6b; }
+.sensor-chip.quality { background: linear-gradient(135deg, #fff3e0, #ffe9d6); border-color: #ffd2a8; }
+.sensor-chip .measure-btn { margin-left: 6px; border: none; background: #568265; color: white; padding: 4px 8px; border-radius: 8px; font-size: 12px; cursor: pointer; }
+.sensor-chip .measure-btn:hover { background: #456852; }
 
 .tags { display: flex; gap: 8px; flex-wrap: wrap; }
 .tag { background: #f0f8f4; color: #568265; padding: 4px 10px; border-radius: 12px; font-size: 12px; }
