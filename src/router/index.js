@@ -10,6 +10,7 @@ import MainLayout from '@/components/MainLayout.vue'
 import HomePage from '@/components/Home/HomePage.vue'
 import PlantDetail from '@/components/Home/PlantDetail.vue'
 import AddPlant from '@/components/Home/AddPlant.vue'
+import AllPlantsView from '@/components/Home/AllPlantsView.vue'
 import PlantSearch from '@/components/Home/PlantSearch.vue'
 import Notification from '@/components/Home/Notification.vue'
 import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
@@ -45,6 +46,12 @@ const routes = [
         name: 'AddPlant',
         component: AddPlant,
         meta: { requiresAuth: true, showBottomNav: true }
+      },
+      {
+        path: '/all-plants',
+        name: 'AllPlantsView',
+        component: AllPlantsView,
+        meta: { requiresAuth: true }
       },
       {
         path: 'edit-plant/:id',
