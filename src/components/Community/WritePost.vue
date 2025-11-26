@@ -411,16 +411,20 @@ export default {
   border-left: 1px solid #eee;
   border-right: 1px solid #eee;
   background-color: #fafafa;
+  padding-top: 60px;
 }
 
 .writepost__header {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 50%;
+  transform: translateX(-50%);
   width: 100%;
+  max-width: 460px;
   height: 48px;
   background-color: white;
   border-bottom: 1px solid #eee;
-  z-index: 100;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -64,7 +64,7 @@
 
     <!-- 게시글 리스트 -->
     <div v-else class="posts-container">
-      <div v-for="post in filteredPosts" :key="post.id" class="post-card">
+      <div v-for="post in filteredPosts" :key="post.id" class="post-card" @click="goToPost(post.id)" role="button" tabindex="0" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
         <!-- 상품 이미지 -->
         <div class="post-image-wrapper">
           <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }">
@@ -93,8 +93,8 @@
         <p class="date">{{ formatDate(post.created_at || post.date) }}</p>
 
         <!-- 본문 -->
-        <div class="post-content">
-          <p class="post-description">{{ post.text }}</p>
+        <div class="post-content" role="button" tabindex="0" @click="goToPost(post.id)" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
+          <p class="post-description">{{ truncateText(post.text, 80) }}</p>
           <div v-if="post.tags && post.tags.length > 0" class="tags">
             <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
           </div>
@@ -430,6 +430,16 @@ export default {
         this.searchQuery = q
       }
     },
+    goToPost(id) {
+      if (!id) return
+      this.$router.push(`/community/post/${id}`)
+    },
+    truncateText(text, max = 80) {
+      if (!text) return ''
+      const t = String(text)
+      if (t.length <= max) return t
+      return t.slice(0, max) + '...'
+    },
     
     openChat(post) {
       const chatId = `chat-${post.id}-${Date.now()}`
@@ -764,6 +774,7 @@ export default {
 
 .post-content {
   padding: 0 15px 15px;
+  cursor: pointer;
 }
 
 .post-description {

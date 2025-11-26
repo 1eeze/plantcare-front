@@ -1120,14 +1120,22 @@ onMounted(() => {
 .plant-image-section {
   position: relative;
   width: 100%;
-  height: 280px;
+  max-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
   overflow: hidden;
+  padding: 8px;
+  box-sizing: border-box;
 }
 
 .plant-image {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-height: 344px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
 }
 
 .image-overlay {

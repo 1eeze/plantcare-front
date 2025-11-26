@@ -413,8 +413,8 @@ onMounted(loadProfile)
 
 <style scoped>
 /* 스타일은 기존과 동일 + 설정 항목 스타일 추가 */
-.edit-page { background: #f7f6ed; min-height: 100vh; padding-bottom: 40px; font-family: sans-serif; }
-.edit-header { background: white; padding: 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.edit-page { background: #f7f6ed; min-height: 100vh; padding-bottom: 40px; padding-top: 64px; font-family: sans-serif; }
+.edit-header { background: white; padding: 8px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1100; box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
 .back-btn, .save-btn-header { background: none; border: none; cursor: pointer; }
 .save-btn-header { color: #999; font-weight: 600; }
 .save-btn-header.active { color: #568265; }

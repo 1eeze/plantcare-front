@@ -53,7 +53,7 @@
       </button>
 
       <button @click="toggleBookmark" class="icon-btn bookmark" :class="{ active: isBookmarked }">
-        <span class="icon">{{ isBookmarked ? '🔖' : 'Vm' }}</span>
+        <span class="icon">{{ isBookmarked ? '🔖' : '🔖' }}</span>
         <span>{{ isBookmarked ? '저장됨' : '저장' }}</span>
       </button>
     </div>
@@ -251,7 +251,8 @@ onMounted(fetchPost)
 .action-text-btn { background: none; border: none; font-size: 14px; color: #666; margin-left: 10px; cursor: pointer; }
 .action-text-btn.delete { color: #e74c3c; }
 
-.image-area img { width: 100%; max-height: 400px; object-fit: cover; }
+.image-area { background: #f5f5f5; display: flex; align-items: center; justify-content: center; padding: 8px; }
+.image-area img { width: 100%; max-height: 500px; object-fit: contain; border-radius: 12px; }
 
 .user-info-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px; border-bottom: 1px solid #f0f0f0; }
 .profile-wrap { display: flex; align-items: center; gap: 10px; cursor: pointer; }
