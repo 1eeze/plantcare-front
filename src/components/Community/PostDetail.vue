@@ -564,7 +564,7 @@ const loadSensorStatus = async (userId, title) => {
       sensorQualityGrade.value = computeQualityFromSensor(sensorStatus.value)
     }
 
-  console.log('[센서] 로딩 완료:', sensorStatus.value)
+    console.log('[센서] 로딩 완료:', sensorStatus.value)
   } catch (err) {
     console.error('[센서] 센서 데이터 조회 실패:', err)
   }
