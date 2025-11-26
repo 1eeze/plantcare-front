@@ -802,9 +802,9 @@ export default {
             }
           }
 
-          const needsImageQuality =
-            (!post.quality_grade || post.quality_grade === '-' || post.quality_grade === null) &&
-            photoUrl
+          const gradeMissing = !post.quality_grade || post.quality_grade === '-' || post.quality_grade === null
+          const confidenceMissing = post.quality_confidence === null || post.quality_confidence === undefined
+          const needsImageQuality = photoUrl && (gradeMissing || confidenceMissing)
 
           if (needsImageQuality) {
             photoPredictQueue.push({ post, photoUrl })
