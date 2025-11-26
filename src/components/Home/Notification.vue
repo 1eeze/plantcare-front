@@ -275,11 +275,20 @@ const searchUsers = async () => {
 }
 const startNewChat = (targetUser) => { closeUserSearchModal(); router.push(`/chat/${targetUser.id}`) }
 
-const notifications = ref([]) 
+const notifications = ref([])
 const chatList = ref([])
 const currentUser = ref(null)
+let notificationSubscription = null
 
-const filteredNotifications = computed(() => notifications.value)
+const filteredNotifications = computed(() => {
+  if (!headerSearchKeyword.value) return notifications.value
+  const keyword = headerSearchKeyword.value.toLowerCase()
+  return notifications.value.filter(n =>
+    n.title.toLowerCase().includes(keyword) ||
+    n.message.toLowerCase().includes(keyword)
+  )
+})
+
 const filteredChatList = computed(() => {
   if (!headerSearchKeyword.value) return chatList.value
   const keyword = headerSearchKeyword.value.toLowerCase()
@@ -289,7 +298,9 @@ const filteredChatList = computed(() => {
   })
 })
 
-const notificationCount = computed(() => 0)
+const notificationCount = computed(() =>
+  notifications.value.filter(n => !n.read).length
+)
 const chatCount = computed(() => chatList.value.reduce((sum, chat) => sum + chat.unreadCount, 0))
 
 const loadChatList = async () => {
@@ -381,6 +392,77 @@ const loadChatList = async () => {
   }
 }
 
+// 알림 로드
+const loadNotifications = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    currentUser.value = user
+
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(50)
+
+    if (error) throw error
+
+    notifications.value = (data || []).map(n => ({
+      id: n.id,
+      type: n.type,
+      title: n.title,
+      message: n.message,
+      read: n.read,
+      timestamp: new Date(n.created_at),
+      metadata: n.metadata,
+      relatedPostId: n.related_post_id,
+      relatedUserId: n.related_user_id
+    }))
+  } catch (e) {
+    console.error('알림 로드 실패:', e)
+  }
+}
+
+// 알림 실시간 구독
+const subscribeToNotificationChanges = () => {
+  if (!currentUser.value) return
+  if (notificationSubscription) supabase.removeChannel(notificationSubscription)
+
+  notificationSubscription = supabase
+    .channel('public:notifications_subscription')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.value.id}` },
+      (payload) => {
+        const newNotification = payload.new
+        notifications.value.unshift({
+          id: newNotification.id,
+          type: newNotification.type,
+          title: newNotification.title,
+          message: newNotification.message,
+          read: newNotification.read,
+          timestamp: new Date(newNotification.created_at),
+          metadata: newNotification.metadata,
+          relatedPostId: newNotification.related_post_id,
+          relatedUserId: newNotification.related_user_id
+        })
+      }
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.value.id}` },
+      (payload) => {
+        const updated = payload.new
+        const index = notifications.value.findIndex(n => n.id === updated.id)
+        if (index !== -1) {
+          notifications.value[index].read = updated.read
+        }
+      }
+    )
+    .subscribe()
+}
+
 // 실시간 감지 필터링
 const subscribeToMessageChanges = () => {
   if (!currentUser.value) return
@@ -395,10 +477,10 @@ const subscribeToMessageChanges = () => {
         const newMsg = payload.new
         const oldMsg = payload.old
         const myId = currentUser.value.id
-        const msg = newMsg || oldMsg 
-        
+        const msg = newMsg || oldMsg
+
         if (msg?.content?.includes('::SYSTEM_LEAVE::')) {
-            return 
+            return
         }
 
         if (msg && (msg.sender_id === myId || msg.receiver_id === myId)) {
@@ -409,19 +491,50 @@ const subscribeToMessageChanges = () => {
     .subscribe()
 }
 
-onActivated(() => { loadChatList() })
+onActivated(() => {
+  loadChatList()
+  loadNotifications()
+})
+
 onMounted(async () => {
   loadingChats.value = true
-  await loadChatList()
+  await Promise.all([loadChatList(), loadNotifications()])
   subscribeToMessageChanges()
+  subscribeToNotificationChanges()
 })
+
 onBeforeUnmount(() => {
   if (messageSubscription) supabase.removeChannel(messageSubscription)
+  if (notificationSubscription) supabase.removeChannel(notificationSubscription)
 })
 
 const setActiveTab = (tab) => { activeTab.value = tab; isHeaderSearchActive.value = false; headerSearchKeyword.value = '' }
 const openChat = (chat) => { router.push(`/chat/${chat.id}`) }
-const handleNotificationClick = (n) => { n.read = true }
+
+const handleNotificationClick = async (notification) => {
+  try {
+    // 읽지 않은 알림이면 읽음 처리
+    if (!notification.read) {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ read: true })
+        .eq('id', notification.id)
+
+      if (error) throw error
+
+      // 로컬 상태도 업데이트
+      notification.read = true
+    }
+
+    // 관련 게시글이 있으면 해당 게시글로 이동
+    if (notification.relatedPostId) {
+      router.push(`/community/${notification.relatedPostId}`)
+    }
+  } catch (e) {
+    console.error('알림 처리 실패:', e)
+  }
+}
+
 const getNotificationIcon = (t) => ({ plant: '🌱', trade: '💰', social: '❤️', system: '⚙️' }[t] || '📋')
 const formatTime = (timestamp) => {
   const now = new Date(); const diff = now - timestamp

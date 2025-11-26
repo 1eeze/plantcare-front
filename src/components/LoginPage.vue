@@ -30,19 +30,9 @@
         </div>
       <div class="sns-circle-group">
 
-        <div class="sns-circle-button" @click="handleNaverLogin('naver')">
-          <button class="gsi-material-button">
-            <div class="gsi-material-button-state"></div>
-            <div class="gsi-material-button-content-wrapper">
-              <div class="gsi-material-button-icon">
-                <img class="naver-img" src="../assets/btnW_아이콘원형.png" alt="네이버" />
-              </div>
-            </div>
-          </button>
-          <span>네이버</span>
-        </div>
 
-        <div class="sns-circle-button" @click="handleKakaoLogin('naver')">
+
+        <div class="sns-circle-button" @click="handleKakaoLogin">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
@@ -54,7 +44,7 @@
           <span>카카오</span>
         </div>
 
-        <div class="sns-circle-button" @click="handleGoogleLogin('google')">
+        <div class="sns-circle-button" @click="handleGoogleLogin">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
@@ -149,14 +139,7 @@
   }
 
   // redirectTo가 포함된 Supabase 클라이언트 방식 사용
-  const handleNaverLogin = async () => {
-    await supabase.auth.signInWithOAuth({
-      provider: 'naver',
-      options: {
-        redirectTo: window.location.origin
-      }
-    })
-  }
+
 
   const handleKakaoLogin = async () => {
     await supabase.auth.signInWithOAuth({
@@ -365,12 +348,6 @@ button {
   height: 100%;
 }
 
-.naver-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 50%;
-}
 
 .kakao-img {
   width: 100%;

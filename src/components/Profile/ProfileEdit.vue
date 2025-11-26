@@ -99,6 +99,50 @@
         </div>
       </section>
 
+      <section class="form-section">
+        <h2 class="section-title">공개 범위 설정</h2>
+        <p class="section-description">다른 사용자가 내 프로필에서 볼 수 있는 정보를 설정합니다</p>
+
+        <div class="privacy-item">
+          <div class="privacy-info">
+            <span class="privacy-label">내 식물</span>
+            <span class="privacy-description">내가 키우는 식물 목록</span>
+          </div>
+          <div class="toggle-switch" @click="togglePrivacy('plants')">
+            <div class="toggle-track" :class="{ active: form.privacy_plants === 'public' }">
+              <div class="toggle-thumb"></div>
+            </div>
+            <span class="toggle-text">{{ form.privacy_plants === 'public' ? '전체' : '나만' }}</span>
+          </div>
+        </div>
+
+        <div class="privacy-item">
+          <div class="privacy-info">
+            <span class="privacy-label">저장됨</span>
+            <span class="privacy-description">북마크한 게시글 목록</span>
+          </div>
+          <div class="toggle-switch" @click="togglePrivacy('bookmarks')">
+            <div class="toggle-track" :class="{ active: form.privacy_bookmarks === 'public' }">
+              <div class="toggle-thumb"></div>
+            </div>
+            <span class="toggle-text">{{ form.privacy_bookmarks === 'public' ? '전체' : '나만' }}</span>
+          </div>
+        </div>
+
+        <div class="privacy-item">
+          <div class="privacy-info">
+            <span class="privacy-label">리포트</span>
+            <span class="privacy-description">AI 식물 분석 리포트</span>
+          </div>
+          <div class="toggle-switch" @click="togglePrivacy('reports')">
+            <div class="toggle-track" :class="{ active: form.privacy_reports === 'public' }">
+              <div class="toggle-thumb"></div>
+            </div>
+            <span class="toggle-text">{{ form.privacy_reports === 'public' ? '전체' : '나만' }}</span>
+          </div>
+        </div>
+      </section>
+
       <section class="form-section danger-section">
         <h2 class="section-title danger-title">계정 관리</h2>
         <button @click="confirmLogout" class="danger-btn logout-btn">로그아웃</button>
@@ -162,14 +206,40 @@ const allLocations = [
 ]
 const filteredLocations = ref([...allLocations])
 
-const form = reactive({ nickname: '', titleId: 1, bio: '', location: '' })
-const originalForm = reactive({ nickname: '', titleId: 1, bio: '', location: '', avatar_url: null })
+const currentMessage = ref({})
+
+const form = reactive({
+  nickname: '',
+  titleId: 1,
+  bio: '',
+  location: '',
+  privacy_plants: 'public',
+  privacy_bookmarks: 'private',
+  privacy_reports: 'public'
+})
+const privacySupported = ref(true)
+
+const originalForm = reactive({
+  nickname: '',
+  titleId: 1,
+  bio: '',
+  location: '',
+  avatar_url: null,
+  privacy_plants: 'public',
+  privacy_bookmarks: 'private',
+  privacy_reports: 'public'
+})
 const errors = reactive({ nickname: '' })
 
 const hasChanges = computed(() => {
   const avatarChanged = avatarFile.value !== null || (previewImage.value === null && originalForm.avatar_url !== null)
   return form.nickname !== originalForm.nickname || form.titleId !== originalForm.titleId ||
-         form.bio !== originalForm.bio || form.location !== originalForm.location || avatarChanged
+         form.bio !== originalForm.bio || form.location !== originalForm.location || avatarChanged ||
+         (privacySupported.value && (
+           form.privacy_plants !== originalForm.privacy_plants ||
+           form.privacy_bookmarks !== originalForm.privacy_bookmarks ||
+           form.privacy_reports !== originalForm.privacy_reports
+         ))
 })
 
 const avatarStyle = computed(() => previewImage.value ? { backgroundImage: `url(${previewImage.value})`, backgroundSize: 'cover' } : {})
@@ -178,18 +248,41 @@ const loadProfile = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return router.push('/login')
 
-  const { data } = await supabase
+  let data = null
+  if (privacySupported.value) {
+    try {
+      const { data: withPrivacy } = await supabase
+        .from('Users')
+        .select('name, avatar_url, message')
+        .eq('id', user.id)
+        .single()
+      data = withPrivacy
+    } catch (err) {
+      console.warn('Users 조회(privacy 포함) 실패, fallback to base columns:', err?.message)
+      privacySupported.value = false
+    }
+  }
+
+  if (!data) {
+  const { data: fallback } = await supabase
     .from('Users')
-    .select('name, avatar_url, bio, location, titleId')
+    .select('name, avatar_url, message')
     .eq('id', user.id)
     .single()
+  data = fallback
+  }
 
   if (data) {
-    Object.assign(form, { 
-      nickname: data.name || '', 
-      bio: data.bio || '', 
-      location: data.location || '', 
-      titleId: data.titleId || 1 
+    const profileMeta = data.message?.profileMeta || {}
+    currentMessage.value = data.message || {}
+    Object.assign(form, {
+      nickname: data.name || '',
+      bio: profileMeta.bio || '',
+      location: profileMeta.location || '',
+      titleId: profileMeta.titleId || 1,
+      privacy_plants: profileMeta.privacy_plants || 'public',
+      privacy_bookmarks: profileMeta.privacy_bookmarks || 'private',
+      privacy_reports: profileMeta.privacy_reports || 'public'
     })
     Object.assign(originalForm, { ...form, avatar_url: data.avatar_url })
     if (data.avatar_url) previewImage.value = data.avatar_url
@@ -229,13 +322,20 @@ const saveProfile = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     
+    const profileMeta = {
+      bio: form.bio,
+      location: form.location,
+      titleId: form.titleId,
+      privacy_plants: form.privacy_plants,
+      privacy_bookmarks: form.privacy_bookmarks,
+      privacy_reports: form.privacy_reports
+    }
+
     const updates = {
       id: user.id,
       email: user.email,
       name: form.nickname,
-      bio: form.bio,
-      location: form.location,
-      titleId: form.titleId,
+      message: { ...currentMessage.value, profileMeta },
       updated_at: new Date()
     }
 
@@ -281,10 +381,20 @@ const openLocationSearch = () => { showLocationModal.value = true; locationSearc
 
 // [추가] 앱 설정 관련 (기능은 추후 구현이더라도 버튼은 살아있음)
 const manageNotifications = () => {
-  alert('알림 설정 기능은 준비 중입니다.') 
+  alert('알림 설정 기능은 준비 중입니다.')
 }
 const privacySettings = () => {
   alert('개인정보 설정 기능은 준비 중입니다.')
+}
+
+const togglePrivacy = (type) => {
+  if (type === 'plants') {
+    form.privacy_plants = form.privacy_plants === 'public' ? 'private' : 'public'
+  } else if (type === 'bookmarks') {
+    form.privacy_bookmarks = form.privacy_bookmarks === 'public' ? 'private' : 'public'
+  } else if (type === 'reports') {
+    form.privacy_reports = form.privacy_reports === 'public' ? 'private' : 'public'
+  }
 }
 
 const confirmLogout = async () => { if(confirm('로그아웃 하시겠어요?')) { await supabase.auth.signOut(); router.push('/login') } }
@@ -303,8 +413,8 @@ onMounted(loadProfile)
 
 <style scoped>
 /* 스타일은 기존과 동일 + 설정 항목 스타일 추가 */
-.edit-page { background: #f7f6ed; min-height: 100vh; padding-bottom: 40px; font-family: sans-serif; }
-.edit-header { background: white; padding: 16px; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+.edit-page { background: #f7f6ed; min-height: 100vh; padding-bottom: 40px; padding-top: 64px; font-family: sans-serif; }
+.edit-header { background: white; padding: 8px; display: flex; justify-content: space-between; align-items: center; position: fixed; top: 0; left: 0; right: 0; z-index: 1100; box-shadow: 0 2px 4px rgba(0,0,0,0.12); }
 .back-btn, .save-btn-header { background: none; border: none; cursor: pointer; }
 .save-btn-header { color: #999; font-weight: 600; }
 .save-btn-header.active { color: #568265; }
@@ -356,4 +466,18 @@ onMounted(loadProfile)
 
 .error-msg { color: #e74c3c; font-size: 12px; margin-top: 6px; font-weight: 500; }
 .form-group.error .input-wrapper { border-color: #e74c3c; }
+
+/* 공개 범위 설정 스타일 */
+.section-description { font-size: 13px; color: #666; margin-bottom: 16px; line-height: 1.5; }
+.privacy-item { display: flex; justify-content: space-between; align-items: center; padding: 16px 0; border-bottom: 1px solid #f0f0f0; }
+.privacy-item:last-child { border-bottom: none; }
+.privacy-info { flex: 1; }
+.privacy-label { display: block; font-size: 15px; color: #333; font-weight: 600; margin-bottom: 4px; }
+.privacy-description { display: block; font-size: 12px; color: #999; }
+.toggle-switch { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+.toggle-track { width: 44px; height: 24px; background: #ddd; border-radius: 12px; position: relative; transition: background 0.3s; }
+.toggle-track.active { background: #568265; }
+.toggle-thumb { width: 20px; height: 20px; background: white; border-radius: 50%; position: absolute; top: 2px; left: 2px; transition: left 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+.toggle-track.active .toggle-thumb { left: 22px; }
+.toggle-text { font-size: 13px; color: #666; font-weight: 600; min-width: 32px; }
 </style>

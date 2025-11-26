@@ -16,7 +16,7 @@
           </svg>
         </button>
         <h1 class="header-title">식물 상세</h1>
-        <button @click="confirmDelete" class="delete-btn" title="식물 삭제">
+        <button v-if="isOwner" @click="confirmDelete" class="delete-btn" title="식물 삭제">
           🗑️
         </button>
       </div>
@@ -441,6 +441,8 @@ const sensorData = ref(null)
 const loading = ref(true)
 const showDeleteConfirm = ref(false)
 const deleting = ref(false)
+const currentUserId = ref(null)
+const isOwner = computed(() => currentUserId.value && plant.value?.user_id === currentUserId.value)
 
 // AI 분석 관련 상태
 const analyzing = ref(false)
@@ -461,13 +463,13 @@ const loadPlantData = async () => {
       router.push('/login')
       return
     }
+    currentUserId.value = user.id
 
     // 1단계: User_Plants에서 식물 정보 가져오기
     const { data: plantData, error: plantError } = await supabase
       .from('User_Plants')
-      .select('id, name, locate, photos, created_at, updated_at, plant_data_id')
+      .select('id, user_id, name, locate, photos, created_at, updated_at, plant_data_id')
       .eq('id', plantId)
-      .eq('user_id', user.id)
       .single()
 
     console.log('=== PlantDetail 데이터 로드 ===')
@@ -987,6 +989,7 @@ const getStatusClass = (status) => {
 
 // 삭제 확인
 const confirmDelete = () => {
+  if (!isOwner.value) return
   showDeleteConfirm.value = true
 }
 
@@ -1120,14 +1123,22 @@ onMounted(() => {
 .plant-image-section {
   position: relative;
   width: 100%;
-  height: 280px;
+  max-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
   overflow: hidden;
+  padding: 8px;
+  box-sizing: border-box;
 }
 
 .plant-image {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  max-height: 344px;
+  height: auto;
+  object-fit: contain;
+  border-radius: 12px;
 }
 
 .image-overlay {

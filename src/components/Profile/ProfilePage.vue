@@ -16,6 +16,7 @@
     </div>
 
     <div class="profile-header">
+      <button class="profile-report-btn" @click="openProfileReport">신고하기</button>
       <div class="profile-image-wrapper">
         <img class="profile-img" :src="profileImage" alt="프로필 이미지" />
         <div v-if="userProfile.verified" class="verified-badge" title="인증된 사용자">✓</div>
@@ -109,7 +110,12 @@
       </div>
       
       <div v-if="activeTab === 'plants'" class="grid-content">
-        <div v-if="myPlants.length === 0" class="empty-state">
+        <div v-if="!isOwnProfile && userProfile.privacy_plants === 'private'" class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h4>비공개 설정된 정보입니다</h4>
+          <p>이 사용자가 식물 목록을 비공개로 설정했습니다</p>
+        </div>
+        <div v-else-if="myPlants.length === 0" class="empty-state">
           <div class="empty-icon">🪴</div><h4>등록된 식물이 없어요</h4>
         </div>
         <div v-else class="plants-grid">
@@ -136,7 +142,12 @@
       </div>
 
       <div v-if="activeTab === 'bookmarks'" class="grid-content">
-        <div v-if="bookmarkedPosts.length === 0" class="empty-state">
+        <div v-if="!isOwnProfile && userProfile.privacy_bookmarks === 'private'" class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h4>비공개 설정된 정보입니다</h4>
+          <p>이 사용자가 저장된 게시글을 비공개로 설정했습니다</p>
+        </div>
+        <div v-else-if="bookmarkedPosts.length === 0" class="empty-state">
           <div class="empty-icon">🔖</div>
           <h4>저장된 게시글이 없어요</h4>
           <p>마음에 드는 식물을 찾아보세요!</p>
@@ -157,13 +168,41 @@
         </div>
       </div>
 
-      <div v-if="activeTab === 'photos'" class="grid-content">
-        <div v-if="photos.length === 0" class="empty-state">
-          <div class="empty-icon">📸</div><h4>업로드된 사진이 없어요</h4>
+      <div v-if="activeTab === 'reports'" class="grid-content">
+        <div v-if="!isOwnProfile && userProfile.privacy_reports === 'private'" class="empty-state">
+          <div class="empty-icon">🔒</div>
+          <h4>비공개 설정된 정보입니다</h4>
+          <p>이 사용자가 리포트를 비공개로 설정했습니다</p>
         </div>
-        <div v-else class="photos-grid">
-          <div v-for="photo in photos" :key="photo.id" class="photo-item" @click="openPhotoModal(photo)">
-            <img :src="photo.url" /><div class="photo-overlay"><div class="photo-stats"><span>❤️ {{ photo.likes }}</span><span>💬 {{ photo.comments }}</span></div></div>
+        <div v-else-if="analysisReports.length === 0" class="empty-state">
+          <div class="empty-icon">📋</div>
+          <h4>AI 분석 리포트가 없어요</h4>
+          <p v-if="isOwnProfile">카메라로 식물을 촬영하고 AI 분석을 받아보세요!</p>
+        </div>
+        <div v-else class="reports-list">
+          <div v-for="report in analysisReports" :key="report.id" class="report-card" @click="openReportDetail(report)">
+            <div class="report-header">
+              <div class="report-icon">🔬</div>
+              <div class="report-main">
+                <h4>{{ report.pest_kr_name || '건강함' }}</h4>
+                <p class="report-date">{{ formatReportDate(report.created_at) }}</p>
+              </div>
+              <div class="report-arrow">›</div>
+            </div>
+            <div class="report-summary">
+              <div v-if="report.pest_confidence" class="summary-item">
+                <span class="label">신뢰도</span>
+                <span class="value">{{ (report.pest_confidence * 100).toFixed(0) }}%</span>
+              </div>
+              <div v-if="report.organ" class="summary-item">
+                <span class="label">부위</span>
+                <span class="value">{{ report.organ }}</span>
+              </div>
+              <div v-if="report.stage" class="summary-item">
+                <span class="label">단계</span>
+                <span class="value">{{ report.stage }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -182,11 +221,25 @@
         <button @click="showFollowModal = false" class="modal-btn">닫기</button>
       </div>
     </div>
+
+    <div v-if="showProfileReportModal" class="modal-overlay" @click="closeProfileReport">
+      <div class="modal-content report-modal" @click.stop>
+        <h3>신고하기</h3>
+        <p class="report-hint">해당 사용자를 신고하는 이유를 적어주세요.</p>
+        <textarea v-model="profileReportMessage" rows="4" placeholder="예: 스팸/허위 정보 같습니다." />
+        <div class="report-actions">
+          <button class="btn-secondary" @click="closeProfileReport">취소</button>
+          <button class="btn-primary" @click="submitProfileReport">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showReportToast" class="toast">신고가 접수되었습니다</div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 import profileImageUrl from '../../assets/user-profile.png'
@@ -220,6 +273,10 @@ const nickname = ref('')
 const activeTab = ref('selling')
 const isFollowing = ref(false)
 const currentUserId = ref(null)
+const showProfileReportModal = ref(false)
+const profileReportMessage = ref('')
+const showReportToast = ref(false)
+let reportToastTimer = null
 
 // 팔로우 모달
 const showFollowModal = ref(false)
@@ -243,19 +300,22 @@ const availableTitles = [
   { id: 8, name: '식물 수집가', emoji: '🏆' }
 ]
 
-const userProfile = ref({ 
-  level: '새싹 초보 🌱', 
-  bio: '', 
-  location: '', 
-  verified: true, 
-  rating: 4.8, 
-  reviewCount: 124, 
-  trustScore: 95, 
+const userProfile = ref({
+  level: '새싹 초보 🌱',
+  bio: '',
+  location: '',
+  verified: true,
+  rating: 4.8,
+  reviewCount: 124,
+  trustScore: 95,
   badges: [
-    { type: 'verified', icon: '✅', text: '본인인증' }, 
-    { type: 'seller', icon: '🏆', text: '우수판매자' }, 
+    { type: 'verified', icon: '✅', text: '본인인증' },
+    { type: 'seller', icon: '🏆', text: '우수판매자' },
     { type: 'expert', icon: '🌿', text: '식물전문가' }
-  ] 
+  ],
+  privacy_plants: 'public',
+  privacy_bookmarks: 'private',
+  privacy_reports: 'public'
 })
 
 const userStats = ref({ 
@@ -271,26 +331,24 @@ const tabs = [
   { key: 'plants', label: '내 식물', icon: 'M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22ZM12 6V18M6 12H18' },
   { key: 'reviews', label: '후기', icon: 'M11.049 2.927C11.3483 2.00636 12.6517 2.00636 12.951 2.927L14.4699 7.60081C14.6035 8.01284 14.9875 8.29885 15.4207 8.29885H20.4717C21.4329 8.29885 21.8375 9.54193 21.0845 10.1009L17.2637 12.7602C16.9126 13.0257 16.7681 13.4778 16.9018 13.8898L18.4207 18.5636C18.72 19.4843 17.6656 20.2476 16.9126 19.6886L13.0918 17.0293C12.7407 16.7638 12.2593 16.7638 11.9082 17.0293L8.08741 19.6886C7.33445 20.2476 6.28 19.4843 6.57933 18.5636L8.0982 13.8898C8.23193 13.4778 8.08741 13.0257 7.73632 12.7602L3.91553 10.1009C3.16257 9.54193 3.56714 8.29885 4.52832 8.29885H9.57933C10.0125 8.29885 10.3965 8.01284 10.5301 7.60081L11.049 2.927Z' },
   { key: 'bookmarks', label: '저장됨', icon: 'M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z' },
-  { key: 'photos', label: '갤러리', icon: 'M4 16L8.586 11.414C9.367 10.633 10.633 10.633 11.414 11.414L16 16M14 14L15.586 12.414C16.367 11.633 17.633 11.633 18.414 12.414L20 14M14 8H14.01M6 20H18C19.1046 20 20 19.1046 20 18V6C20 4.89543 19.1046 4 18 4H6C4.89543 4 4 4.89543 4 6V18C4 19.1046 4.89543 20 6 20Z' }
+  { key: 'reports', label: '리포트', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' }
 ]
 
-const bookmarkedPosts = ref([]) 
-const sellingPosts = ref([]) 
-const myPlants = ref([]) 
+const bookmarkedPosts = ref([])
+const sellingPosts = ref([])
+const myPlants = ref([])
 const reviews = ref([
-  { 
-    id: 1, 
-    reviewerName: 'PlantLover', 
-    reviewerAvatar: 'https://picsum.photos/40?random=1', 
-    rating: 5, 
-    text: '친절해요!', 
-    date: '2024-08-20', 
-    plantInfo: { name: '몬스테라', image: plantImg1 } 
+  {
+    id: 1,
+    reviewerName: 'PlantLover',
+    reviewerAvatar: 'https://picsum.photos/40?random=1',
+    rating: 5,
+    text: '친절해요!',
+    date: '2024-08-20',
+    plantInfo: { name: '몬스테라', image: plantImg1 }
   }
 ])
-const photos = ref([
-  { id: 1, url: plantImg1, caption: '새싹', likes: 23, comments: 5 }
-])
+const analysisReports = ref([])
 
 // JSONB 배열에서 최신 값 추출 헬퍼 함수
 const getLatestSensorValue = (jsonbArray) => {
@@ -300,33 +358,104 @@ const getLatestSensorValue = (jsonbArray) => {
   return jsonbArray[0]?.value ?? null
 }
 
+const privacySupported = ref(true)
+
+const resetViewState = () => {
+  nickname.value = ''
+  profileImage.value = profileImageUrl
+  userProfile.value.bio = ''
+  userProfile.value.location = ''
+  userProfile.value.level = '새싹 초보 🌱'
+  userProfile.value.privacy_plants = 'public'
+  userProfile.value.privacy_bookmarks = 'private'
+  userProfile.value.privacy_reports = 'public'
+  sellingPosts.value = []
+  myPlants.value = []
+  bookmarkedPosts.value = []
+  analysisReports.value = []
+  userStats.value = {
+    plantsCount: 0,
+    postsCount: 0,
+    salesCount: 0,
+    followersCount: 0,
+    followingCount: 0
+  }
+}
+
 const loadProfile = async () => {
+  const baseColumns = 'id, name, avatar_url, message'
+  const normalizeTarget = (val) => {
+    const str = decodeURIComponent(String(val ?? '')).trim()
+    return (str === 'undefined' || str === 'null') ? '' : str
+  }
+  const isUuid = (value) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value)
+
+  const fetchById = async (id) => {
+    const { data, error } = await supabase
+      .from('Users')
+      .select(baseColumns)
+      .eq('id', id)
+      .single()
+    if (error) {
+      if (error.code === 'PGRST116') return null
+      throw error
+    }
+    return data
+  }
+
+  const fetchByName = async (name) => {
+    const { data, error } = await supabase
+      .from('Users')
+      .select(baseColumns)
+      .or(`name.eq.${name},name.ilike.%${name}%`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      if (error.code === 'PGRST116') return null
+      throw error
+    }
+    return data
+  }
+
   try {
+    resetViewState()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
     currentUserId.value = user.id
 
-    let targetId = route.params.userId
-    if (!targetId || targetId === 'me') targetId = user.id
+    const rawTarget = normalizeTarget(route.params.userId)
+    let targetUserRow = null
 
-    // 1. 유저 기본 정보
-    const { data, error } = await supabase
-      .from('Users')
-      .select('name, avatar_url, bio, location, titleId')
-      .eq('id', targetId)
-      .single()
-    
-    if (error && error.code !== 'PGRST116') throw error
-    
-    if (data) {
-      nickname.value = data.name || '알 수 없는 사용자'
-      profileImage.value = data.avatar_url || profileImageUrl
-      userProfile.value.bio = data.bio || ''
-      userProfile.value.location = data.location || ''
-      if (data.titleId) {
-        const t = availableTitles.find(item => item.id === data.titleId)
-        if(t) userProfile.value.level = `${t.name} ${t.emoji}`
+    if (!rawTarget || rawTarget === 'me') {
+      targetUserRow = await fetchById(user.id)
+    } else if (isUuid(rawTarget)) {
+      targetUserRow = await fetchById(rawTarget)
+    } else {
+      targetUserRow = await fetchByName(rawTarget)
+      if (targetUserRow && rawTarget !== targetUserRow.id) {
+        router.replace(`/profile/${targetUserRow.id}`)
       }
+    }
+
+    if (!targetUserRow) {
+      alert('사용자를 찾을 수 없습니다.')
+      return router.back()
+    }
+
+    const targetId = targetUserRow.id
+    const profileMeta = targetUserRow.message?.profileMeta || {}
+
+    nickname.value = targetUserRow.name || '알 수 없는 사용자'
+    profileImage.value = targetUserRow.avatar_url || profileImageUrl
+    userProfile.value.bio = profileMeta.bio || ''
+    userProfile.value.location = profileMeta.location || ''
+    userProfile.value.privacy_plants = profileMeta.privacy_plants || 'public'
+    userProfile.value.privacy_bookmarks = profileMeta.privacy_bookmarks || 'private'
+    userProfile.value.privacy_reports = profileMeta.privacy_reports || 'public'
+    if (profileMeta.titleId) {
+      const t = availableTitles.find(item => item.id === profileMeta.titleId)
+      if(t) userProfile.value.level = `${t.name} ${t.emoji}`
     }
 
     // 2. 판매글 로드
@@ -347,16 +476,20 @@ const loadProfile = async () => {
     }
 
     // 3. 식물 로드 (센서 데이터 포함)
-    const { data: plantsData } = await supabase
-      .from('User_Plants')
-      .select(`
-        id, name, photos, created_at, updated_at,
-        sensor_data:sensor_data!User_Plants_sensor_data_fkey (
-          humidity, temp, light
-        )
-      `)
-      .eq('user_id', targetId)
-      .order('created_at', { ascending: false })
+    let plantsData = null
+    if (targetId === currentUserId.value || userProfile.value.privacy_plants === 'public') {
+      const { data } = await supabase
+        .from('User_Plants')
+        .select(`
+          id, name, photos, created_at, updated_at,
+          sensor_data:sensor_data!User_Plants_sensor_data_fkey (
+            humidity, temp, light
+          )
+        `)
+        .eq('user_id', targetId)
+        .order('created_at', { ascending: false })
+      plantsData = data
+    }
     
     if (plantsData) {
       myPlants.value = plantsData.map(p => {
@@ -365,7 +498,6 @@ const loadProfile = async () => {
         const temp = getLatestSensorValue(sensorData?.temp) ?? 22
         const light = getLatestSensorValue(sensorData?.light) ?? 70
 
-        // 건강 상태 판단
         let health = 'excellent'
         if (humidity < 30 || temp < 15 || temp > 30 || light < 40) {
           health = 'poor'
@@ -375,7 +507,6 @@ const loadProfile = async () => {
           health = 'good'
         }
 
-        // 키운 일수 계산
         const createdDate = new Date(p.created_at)
         const today = new Date()
         const daysOwned = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24))
@@ -393,29 +524,58 @@ const loadProfile = async () => {
     }
 
     // 4. 북마크 로드
-    if (targetId === currentUserId.value) {
-      const { data: bookmarksData, error: bookmarkError } = await supabase
-        .from('bookmarks')
-        .select(`
-          post_id,
-          posts:post_id (*) 
-        `) 
-        .eq('user_id', currentUserId.value)
-          
-      if (bookmarkError) {
-        console.error('북마크 로드 에러:', bookmarkError)
-      } else if (bookmarksData) {
-        bookmarkedPosts.value = bookmarksData
-          .map(b => b.posts)
-          .filter(post => post !== null)
+    if (targetId === currentUserId.value || userProfile.value.privacy_bookmarks === 'public') {
+      if (targetId === currentUserId.value) {
+        const { data: bookmarksData, error: bookmarkError } = await supabase
+          .from('bookmarks')
+          .select(`
+            post_id,
+            posts:post_id (*)
+          `)
+          .eq('user_id', currentUserId.value)
+
+        if (bookmarkError) {
+          console.error('북마크 로드 에러:', bookmarkError)
+        } else if (bookmarksData) {
+          bookmarkedPosts.value = bookmarksData
+            .map(b => b.posts)
+            .filter(post => post !== null)
+        }
       }
     }
+
+    // 5. AI 분석 리포트 로드
+    await loadAnalysisReports(targetId)
 
     await fetchFollowCounts(targetId)
     if (!isOwnProfile.value) await checkIsFollowing(targetId)
 
-  } catch (e) { 
-    console.error('프로필 로드 에러:', e) 
+  } catch (e) {
+    console.error('프로필 로드 에러:', e)
+  }
+}
+
+const loadAnalysisReports = async (targetId) => {
+  try {
+    // 공개 범위 체크
+    if (targetId !== currentUserId.value && privacySupported.value && userProfile.value.privacy_reports === 'private') {
+      analysisReports.value = []
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('analysis_reports')
+      .select('*')
+      .eq('user_id', targetId)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      console.error('리포트 조회 실패:', error)
+    } else {
+      analysisReports.value = data || []
+    }
+  } catch (err) {
+    console.error('리포트 로드 오류:', err)
   }
 }
 
@@ -498,6 +658,24 @@ const openFollowModal = async (type) => {
   }
 }
 
+const openProfileReport = () => {
+  showProfileReportModal.value = true
+}
+
+const closeProfileReport = () => {
+  showProfileReportModal.value = false
+  profileReportMessage.value = ''
+}
+
+const submitProfileReport = () => {
+  closeProfileReport()
+  showReportToast.value = true
+  if (reportToastTimer) clearTimeout(reportToastTimer)
+  reportToastTimer = setTimeout(() => {
+    showReportToast.value = false
+  }, 2000)
+}
+
 const startChat = () => {
   const targetId = route.params.userId
   const targetName = nickname.value
@@ -513,23 +691,42 @@ onMounted(() => {
   loadProfile()
 })
 
+onUnmounted(() => {
+  if (reportToastTimer) clearTimeout(reportToastTimer)
+})
+
 const editProfile = () => router.push({ name: 'ProfileEdit' })
 const goToSell = () => router.push('/write')
 const goToAddPlant = () => router.push('/add-plant')
 const goToPost = (id) => { router.push(`/community/post/${id}`) }
 const goToPlantDetail = (id) => router.push(`/plant-detail/${id}`)
-const openPhotoModal = (p) => console.log(p)
+const openReportDetail = (report) => {
+  router.push('/reports')
+}
 const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'
 const formatDate = (d) => {
   if(!d) return ''
   return new Date(d).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
 }
-const getStatusText = (s) => ({ 
-  available: '판매중', 
-  reserved: '예약중', 
-  sold: '판매완료' 
+const formatReportDate = (dateStr) => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now - date
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (hours < 1) return '방금 전'
+  if (hours < 24) return `${hours}시간 전`
+  if (days < 7) return `${days}일 전`
+
+  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+}
+const getStatusText = (s) => ({
+  available: '판매중',
+  reserved: '예약중',
+  sold: '판매완료'
 }[s] || s)
-const getHealthIcon = (h) => ({ 
+const getHealthIcon = (h) => ({
   excellent: '🌟',
   good: '✅',
   fair: '⚠️',
@@ -556,7 +753,8 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .search-name { font-size: 14px; font-weight: 600; color: #333; }
 .search-results.empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
 
-.profile-header { background: white; padding: 24px 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 1px; }
+.profile-header { position: relative; background: white; padding: 24px 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 1px; }
+.profile-report-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; color: #999; font-size: 12px; cursor: pointer; }
 .profile-image-wrapper { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
 .profile-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid #568265; }
 .verified-badge { position: absolute; top: 8px; right: 8px; background: #27ae60; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border: 2px solid white; }
@@ -624,12 +822,20 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .review-stars { display: flex; gap: 2px; }
 .review-date { font-size: 12px; color: #666; }
 .review-text { font-size: 14px; color: #2c3e50; line-height: 1.5; margin: 0 0 12px 0; }
-.photos-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; }
-.photo-item { position: relative; aspect-ratio: 1; overflow: hidden; cursor: pointer; transition: all 0.3s ease; }
-.photo-item img { width: 100%; height: 100%; object-fit: cover; }
-.photo-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s ease; }
-.photo-item:hover .photo-overlay { opacity: 1; }
-.photo-stats { display: flex; gap: 12px; color: white; font-size: 12px; font-weight: 600; }
+
+.reports-list { display: flex; flex-direction: column; gap: 12px; }
+.report-card { background: white; border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; }
+.report-card:hover { transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.12); }
+.report-header { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.report-icon { font-size: 28px; flex-shrink: 0; }
+.report-main { flex: 1; }
+.report-main h4 { margin: 0 0 4px 0; font-size: 15px; font-weight: 600; color: #2c3e50; }
+.report-date { margin: 0; font-size: 12px; color: #7f8c8d; }
+.report-arrow { font-size: 24px; color: #cbd5c0; }
+.report-summary { display: flex; flex-wrap: wrap; gap: 8px; padding-left: 40px; }
+.summary-item { background: #f8f9fa; border-radius: 8px; padding: 6px 12px; display: flex; gap: 8px; align-items: center; font-size: 12px; }
+.summary-item .label { color: #7f8c8d; }
+.summary-item .value { color: #2c3e50; font-weight: 600; }
 
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 100; }
 .modal-content { background: white; padding: 24px; border-radius: 16px; width: 80%; max-width: 320px; text-align: center; }
@@ -640,6 +846,13 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .follow-name { font-size: 14px; font-weight: 600; }
 .empty-list { color: #999; font-size: 13px; padding: 20px; }
 .modal-btn { width: 100%; padding: 12px; background: #568265; color: white; border: none; border-radius: 8px; cursor: pointer; }
+.report-modal { text-align: left; max-width: 360px; }
+.report-hint { color: #777; font-size: 13px; margin: 4px 0 12px; }
+.report-modal textarea { width: 100%; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; font-size: 14px; resize: vertical; min-height: 100px; box-sizing: border-box; }
+.report-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.btn-secondary { background: #f1f1f1; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; color: #555; }
+.btn-primary { background: #568265; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+.toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 3500; }
 
 @media (max-width: 768px) {
   .action-buttons { flex-direction: column; }

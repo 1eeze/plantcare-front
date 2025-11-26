@@ -78,6 +78,7 @@ export default {
     }
 
     const isActive = (path) => {
+      if (!route.path) return false
       if (path === '/') {
         return route.path === '/'
       }
@@ -107,7 +108,7 @@ export default {
   align-items: center;
   border-radius: 30px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
+  z-index: 998;
   padding: 0 8px;
   padding-bottom: env(safe-area-inset-bottom);
   border: 1px solid #e0e0e0;

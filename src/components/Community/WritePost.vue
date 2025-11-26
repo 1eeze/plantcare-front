@@ -337,6 +337,21 @@ export default {
       }
     }
 
+    const applyPrefillFromQuery = () => {
+      if (editPostId) return
+
+      const { price, title } = route.query
+
+      if (typeof title === 'string' && title.trim()) {
+        formData.value.title = title
+      }
+
+      const parsedPrice = Number(price)
+      if (!Number.isNaN(parsedPrice)) {
+        formData.value.price = parsedPrice
+      }
+    }
+
     onMounted(async () => {
       await fetchUserInfo()
       
@@ -357,6 +372,8 @@ export default {
           // 수정 시에는 기존 이미지 URL을 formData에 넣어둠 (변경 감지용)
           formData.value.image = data.image 
         }
+      } else {
+        applyPrefillFromQuery()
       }
     })
 
@@ -394,16 +411,20 @@ export default {
   border-left: 1px solid #eee;
   border-right: 1px solid #eee;
   background-color: #fafafa;
+  padding-top: 60px;
 }
 
 .writepost__header {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 50%;
+  transform: translateX(-50%);
   width: 100%;
+  max-width: 460px;
   height: 48px;
   background-color: white;
   border-bottom: 1px solid #eee;
-  z-index: 100;
+  z-index: 1100;
   display: flex;
   align-items: center;
   justify-content: space-between;

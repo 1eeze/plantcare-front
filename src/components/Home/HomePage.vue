@@ -254,7 +254,7 @@
       <div class="camera-choice-sheet">
         <p class="camera-choice-title">사진을 어떻게 가져올까요?</p>
         <button class="camera-choice-btn" @click="takePhoto">📷 사진 촬영</button>
-        <button class="camera-choice-btn" @click="pickFromGallery">🖼 갤러리에서 선택</button>
+        <button class="camera-choice-btn" @click="pickFromGallery">📊 리포트에서 선택</button>
         <button class="camera-choice-cancel" @click="showCameraChoice = false">취소</button>
       </div>
     </div>
@@ -402,25 +402,23 @@ const getLatestSensorValue = (jsonbArray) => {
   return jsonbArray[0]?.value ?? null
 }
 
-// 알림 카운트 조회
+// 알림 카운트 조회 (메시지 + 알림)
 const fetchUnreadCount = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data: unreadMessages, error } = await supabase
+    // 1. 읽지 않은 메시지 카운트
+    const { data: unreadMessages, error: msgError } = await supabase
       .from('messages')
       .select('sender_id')
       .eq('receiver_id', user.id)
       .eq('is_read', false)
       .neq('content', '::SYSTEM_LEAVE::')
 
-    if (error) throw error
-    if (!unreadMessages || unreadMessages.length === 0) {
-      notificationCount.value = 0
-      return
-    }
+    if (msgError) throw msgError
 
+    // 뮤트된 사용자 제외
     const { data: mutedSettings } = await supabase
       .from('chat_settings')
       .select('partner_id')
@@ -428,12 +426,28 @@ const fetchUnreadCount = async () => {
       .eq('is_muted', true)
 
     const mutedSenderIds = new Set(mutedSettings?.map(s => s.partner_id) || [])
-    const validUnreadCount = unreadMessages.filter(msg => !mutedSenderIds.has(msg.sender_id)).length
-    notificationCount.value = validUnreadCount
+    const validUnreadMessageCount = (unreadMessages || []).filter(msg => !mutedSenderIds.has(msg.sender_id)).length
+
+    // 2. 읽지 않은 알림 카운트
+    const { data: unreadNotifications, error: notifError } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false)
+
+    if (notifError) {
+      // notifications 테이블이 아직 없을 수 있으므로 에러는 무시
+      console.warn('알림 테이블 조회 실패 (테이블이 없을 수 있음):', notifError)
+    }
+
+    const unreadNotificationCount = unreadNotifications?.count || 0
+
+    // 총 알림 수 = 메시지 + 알림
+    notificationCount.value = validUnreadMessageCount + unreadNotificationCount
   } catch (e) { console.error(e) }
 }
 
-// 알림 배지 실시간 업데이트
+// 알림 배지 실시간 업데이트 (메시지 + 알림)
 const subscribeToBadgeUpdates = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
@@ -441,11 +455,19 @@ const subscribeToBadgeUpdates = async () => {
 
   badgeSubscription = supabase
     .channel('home-badge-updates')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'messages', 
-      filter: `receiver_id=eq.${user.id}` 
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'messages',
+      filter: `receiver_id=eq.${user.id}`
+    }, () => {
+      fetchUnreadCount()
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'notifications',
+      filter: `user_id=eq.${user.id}`
     }, () => {
       fetchUnreadCount()
     })
@@ -780,6 +802,11 @@ const handleImageFile = async (file) => {
   }
 }
 
+// 리포트 관련 상태
+const recentReports = ref([])
+const selectedReport = ref(null)
+const showReportDetail = ref(false)
+
 // 기타 헬퍼 함수
 const toggleMenu = () => showMenu.value = !showMenu.value
 const openCamera = () => showCameraChoice.value = true
@@ -790,10 +817,9 @@ const takePhoto = () => {
   input.click()
 }
 const pickFromGallery = () => {
-  const input = document.createElement('input')
-  input.type = 'file'; input.accept = 'image/*'
-  input.onchange = (e) => handleImageFile(e.target.files[0])
-  input.click()
+  showCameraChoice.value = false
+  // 리포트 페이지로 이동하거나 리포트 목록을 보여줌
+  viewAllReports()
 }
 const closePestResult = () => {
   showPestResult.value = false
@@ -805,20 +831,41 @@ const closePestResult = () => {
   growthResult.value = null
   qualityResult.value = null 
 }
-const saveAnalysisResult = () => { 
-  alert('분석 결과가 저장되었습니다!'); 
-  closePestResult() 
-}
-const togglePestDetail = async () => {
-  const willOpen = !showPestDetail.value
-  showPestDetail.value = willOpen
-  
-  // 상세 정보를 열 때 AI 대응 방법이 없으면 생성
-  if (willOpen && pestResult.value && !pestResult.value.aiSolution && pestResult.value.className !== 'none') {
-    const aiSolution = await generateAISolution(pestResult.value.krName, pestResult.value.className)
-    pestResult.value.aiSolution = aiSolution
+const saveAnalysisResult = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      alert('로그인이 필요합니다.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('analysis_reports')
+      .insert({
+        user_id: user.id,
+        pest_class_name: pestResult.value?.className,
+        pest_kr_name: pestResult.value?.krName,
+        pest_confidence: pestResult.value?.confidence,
+        organ: growthResult.value?.organ,
+        organ_confidence: growthResult.value?.organConfidence,
+        stage: growthResult.value?.stage,
+        stage_confidence: growthResult.value?.stageConfidence
+      })
+
+    if (error) {
+      console.error('리포트 저장 실패:', error)
+      alert('리포트 저장에 실패했습니다: ' + error.message)
+    } else {
+      alert('분석 결과가 저장되었습니다!')
+      await loadRecentReports()
+      closePestResult()
+    }
+  } catch (err) {
+    console.error('리포트 저장 오류:', err)
+    alert('오류가 발생했습니다: ' + err.message)
   }
 }
+const togglePestDetail = () => showPestDetail.value = !showPestDetail.value
 const toggleOrganDetail = () => showOrganDetail.value = !showOrganDetail.value
 const toggleStageDetail = () => showStageDetail.value = !showStageDetail.value
 const toggleQualityDetail = () => {
@@ -833,6 +880,67 @@ const getQualityAdvice = (grade) => {
     'B': '개선이 필요합니다. 물주기, 햇빛, 비료 관리를 점검해보세요. 잎에 먼지가 쌓였다면 닦아주는 것도 좋습니다.'
   }
   return advice[grade] || '전문가와 상담을 권장합니다.'
+}
+
+// 리포트 관련 함수
+const loadRecentReports = async () => {
+  try {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+
+    const { data, error } = await supabase
+      .from('analysis_reports')
+      .select('*')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(5)
+
+    if (error) {
+      console.error('리포트 조회 실패:', error)
+    } else {
+      recentReports.value = data || []
+    }
+  } catch (err) {
+    console.error('리포트 로드 오류:', err)
+  }
+}
+
+const formatDate = (dateStr) => {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now - date
+  const hours = Math.floor(diff / (1000 * 60 * 60))
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+  if (hours < 1) return '방금 전'
+  if (hours < 24) return `${hours}시간 전`
+  if (days < 7) return `${days}일 전`
+
+  return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' })
+}
+
+const openReportDetail = (report) => {
+  selectedReport.value = report
+
+  // 리포트 데이터를 pestResult와 growthResult 형식으로 변환
+  pestResult.value = {
+    className: report.pest_class_name,
+    krName: report.pest_kr_name,
+    confidence: report.pest_confidence
+  }
+
+  growthResult.value = {
+    organ: report.organ,
+    organConfidence: report.organ_confidence,
+    stage: report.stage,
+    stageConfidence: report.stage_confidence
+  }
+
+  showPestResult.value = true
+}
+
+const viewAllReports = () => {
+  router.push('/reports')
 }
 
 // 실시간 업데이트 설정
@@ -971,6 +1079,7 @@ onMounted(async () => {
   await ensureDevSession()
   await loadUserNickname()
   await loadPlants()
+  await loadRecentReports()
   await setupRealtime()
   await fetchUnreadCount()
   await subscribeToBadgeUpdates()
@@ -980,6 +1089,7 @@ onMounted(async () => {
 onActivated(async () => {
   await loadUserNickname()
   await loadPlants()
+  await loadRecentReports()
   await fetchUnreadCount()
 })
 

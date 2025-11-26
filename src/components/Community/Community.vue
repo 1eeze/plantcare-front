@@ -93,8 +93,8 @@
         <p class="date">{{ formatDate(post.created_at || post.date) }}</p>
 
         <!-- 본문 -->
-        <div class="post-content">
-          <p class="post-description">{{ post.text }}</p>
+        <div class="post-content" role="button" tabindex="0" @click="goToPost(post.id)" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
+          <p class="post-description">{{ truncateText(post.text, 80) }}</p>
           <div v-if="post.tags && post.tags.length > 0" class="tags">
             <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
           </div>
@@ -102,7 +102,7 @@
 
         <!-- 프로필 + 상호작용 -->
         <div class="post-footer">
-          <div class="profile-info" @click="goToProfile(post.userId || post.user_id)">
+          <div class="profile-info" @click="goToProfile(post.userId || post.user_id, post.name)">
             <div class="profile-wrapper">
               <div class="profile" :style="{ backgroundImage: `url(${post.profile})` }"></div>
               <div class="verification-badge" v-if="post.verified">✓</div>
@@ -250,6 +250,10 @@ export default {
   watch: {
     showComment(val) {
       this.$emit('comment-visibility', val)
+    },
+    '$route.query.q'(newQuery, oldQuery) {
+      if (newQuery === oldQuery) return
+      this.applyQuerySearch()
     }
   },
 
@@ -260,6 +264,7 @@ export default {
     
     // 2. 게시글 로드
     await this.fetchPosts()
+    this.applyQuerySearch()
     
     // 3. 실시간 구독 시작
     this.setupRealtime()
@@ -413,8 +418,28 @@ export default {
     clearSearch() { this.searchQuery = '' },
     setActiveFilter(filter) { this.activeFilter = filter },
     goToComments(postId) { this.selectedPostId = postId; this.showComment = true },
-    goToProfile(userId) { this.$router.push(`/profile/${userId}`) },
+    goToProfile(userId, name) {
+      const target = userId || name
+      if (!target) return
+      this.$router.push(`/profile/${target}`)
+    },
     sharePost(post) { if (navigator.share) { navigator.share({ title: post.title, text: post.text, url: window.location.href }) } else { alert('공유 기능이 지원되지 않는 브라우저입니다.') } },
+    applyQuerySearch() {
+      const q = this.$route.query.q
+      if (typeof q === 'string') {
+        this.searchQuery = q
+      }
+    },
+    goToPost(id) {
+      if (!id) return
+      this.$router.push(`/community/post/${id}`)
+    },
+    truncateText(text, max = 80) {
+      if (!text) return ''
+      const t = String(text)
+      if (t.length <= max) return t
+      return t.slice(0, max) + '...'
+    },
     
     openChat(post) {
       const chatId = `chat-${post.id}-${Date.now()}`
@@ -451,7 +476,57 @@ export default {
       }
     },
 
-    buyNow(post) { console.log('바로구매:', post.title); alert(`${post.title} 구매를 진행합니다.`) },
+    async buyNow(post) {
+      if (!this.currentUser) {
+        alert('로그인이 필요합니다.')
+        return
+      }
+
+      // 자기 자신의 게시글인지 확인
+      if (post.user_id === this.currentUser.id) {
+        alert('본인의 게시글입니다.')
+        return
+      }
+
+      console.log('바로구매:', post.title)
+
+      try {
+        // 구매자 정보 조회
+        const { data: buyerData } = await supabase
+          .from('Users')
+          .select('name')
+          .eq('id', this.currentUser.id)
+          .single()
+
+        const buyerName = buyerData?.name || '사용자'
+
+        // 판매자에게 알림 전송
+        const { error: notifError } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: post.user_id,
+            type: 'trade',
+            title: '구매 요청',
+            message: `${buyerName}님이 "${post.title}" 구매를 요청했습니다`,
+            read: false,
+            metadata: {
+              price: post.price,
+              plantName: post.title
+            },
+            related_post_id: post.id,
+            related_user_id: this.currentUser.id
+          })
+
+        if (notifError) {
+          console.warn('알림 전송 실패:', notifError)
+        }
+
+        alert(`${post.title} 구매를 진행합니다.\n판매자에게 알림이 전송되었습니다.`)
+      } catch (e) {
+        console.error('바로구매 처리 중 오류:', e)
+        alert(`${post.title} 구매를 진행합니다.`)
+      }
+    },
     getStatusText(status) { const statusMap = { 'available': '판매중', 'reserved': '예약중', 'sold': '판매완료' }; return statusMap[status] || '판매중' },
     formatPrice(value) { return new Intl.NumberFormat('ko-KR').format(value) + '원' },
     formatDate(dateString) {
@@ -699,6 +774,7 @@ export default {
 
 .post-content {
   padding: 0 15px 15px;
+  cursor: pointer;
 }
 
 .post-description {
