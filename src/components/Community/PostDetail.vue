@@ -35,6 +35,20 @@
       <p class="date">{{ formatDate(post.created_at) }} · 조회 {{ post.views || 0 }}</p>
       <p class="price" v-if="post.price">{{ formatPrice(post.price) }}</p>
       <p class="description">{{ post.text }}</p>
+<div v-if="sensorStatus !== null" class="sensor-summary">
+        <div class="sensor-chip">
+          <span class="chip-label">🌡 온도</span>
+          <span class="chip-value">{{ formatSensor(sensorStatus.temp) }}°C</span>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-label">💧 습도</span>
+          <span class="chip-value">{{ formatSensor(sensorStatus.humidity) }}%</span>
+        </div>
+        <div class="sensor-chip">
+          <span class="chip-label">☀️ 조도</span>
+          <span class="chip-value">{{ formatSensor(sensorStatus.light) }} lux</span>
+        </div>
+      </div>
       
       <div class="tags" v-if="post.tags && post.tags.length">
         <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
@@ -106,6 +120,7 @@ const showReportModal = ref(false)
 const reportMessage = ref('')
 const showToast = ref(false)
 let toastTimer = null
+const sensorStatus = ref(null)
 
 const isOwner = computed(() => currentUser.value && post.value && currentUser.value.id === post.value.user_id)
 
@@ -135,6 +150,7 @@ const fetchPost = async () => {
   }
   post.value = data
   likeCount.value = data.likes || 0
+await loadSensorStatus(data.user_id, data.title)
 
   const { data: { user } } = await supabase.auth.getUser()
   if (user) {
@@ -222,6 +238,40 @@ const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'
 const formatDate = (d) => new Date(d).toLocaleDateString()
 const getStatusText = (s) => ({ available: '판매중', sold: '판매완료', reserved: '예약중' }[s] || s)
 
+const formatSensor = (val) => (val === null || val === undefined || Number.isNaN(val)) ? '-' : val
+
+const loadSensorStatus = async (userId, title) => {
+  try {
+    if (!post.value?.plant_id) return
+
+    const { data, error } = await supabase
+      .from('sensor_data')
+      .select('humidity, temp, light')
+      .eq('plant_id', post.value.plant_id)
+      .maybeSingle()
+    if (error) {
+      if (error.code !== 'PGRST116') console.error('센서 데이터 오류:', error)
+      return
+    }
+    if (!data) return
+    const latestVal = (arr) => {
+      if (!arr) return null
+      if (Array.isArray(arr) && arr.length > 0) {
+        const last = arr[arr.length - 1]
+        return typeof last === 'number' ? last : (last?.value ?? null)
+      }
+      return null
+    }
+    sensorStatus.value = {
+      humidity: latestVal(data.humidity),
+      temp: latestVal(data.temp),
+      light: latestVal(data.light)
+    }
+  } catch (err) {
+    console.error('센서 데이터 조회 실패:', err)
+  }
+}
+
 const closeReport = () => {
   showReportModal.value = false
   reportMessage.value = ''
@@ -268,6 +318,10 @@ onMounted(fetchPost)
 .date { font-size: 13px; color: #999; margin-bottom: 16px; }
 .price { font-size: 18px; font-weight: 700; color: #2c3e50; margin-bottom: 16px; }
 .description { font-size: 15px; line-height: 1.6; color: #333; white-space: pre-wrap; margin-bottom: 20px; }
+.sensor-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.sensor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px; background: #f3f8f4; color: #2c3e50; font-size: 13px; }
+.chip-label { font-weight: 600; color: #568265; }
+.chip-value { font-weight: 600; }
 
 .tags { display: flex; gap: 8px; flex-wrap: wrap; }
 .tag { background: #f0f8f4; color: #568265; padding: 4px 10px; border-radius: 12px; font-size: 12px; }
