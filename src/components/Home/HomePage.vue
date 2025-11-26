@@ -84,6 +84,30 @@
               <p class="detail-value">{{ getStageTip(growthResult?.stage) }}</p>
             </div>
           </div>
+
+          <div class="result-card quality-card" @click="toggleQualityDetail">
+            <div class="card-header">
+              <span class="card-icon">🏆</span>
+              <h4>품질 등급</h4>
+              <span class="expand-icon">{{ showQualityDetail ? '▼' : '▶' }}</span>
+            </div>
+            <div class="card-summary">
+              <p class="quality-grade" :style="{ color: qualityResult?.color }">
+                {{ qualityResult?.label || '감지되지 않음' }}
+              </p>
+              <p v-if="qualityResult?.confidence" class="confidence">
+                신뢰도: {{ (qualityResult.confidence * 100).toFixed(1) }}%
+              </p>
+            </div>
+            
+            <div v-if="showQualityDetail && qualityResult" class="card-detail">
+              <p class="detail-label">등급 설명</p>
+              <p class="detail-value">{{ qualityResult?.description }}</p>
+              
+              <p class="detail-label">개선 방안</p>
+              <p class="detail-value">{{ getQualityAdvice(qualityResult?.grade) }}</p>
+            </div>
+          </div>
         </div>
 
         <button class="save-result-btn" @click="saveAnalysisResult">
@@ -248,6 +272,7 @@ const router = useRouter()
 // API URLs
 const PEST_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/pest'
 const GROWTH_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/growth'
+const QUALITY_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/quality'
 
 // 병충해 분석 관련 상태
 const analyzingPest = ref(false)
@@ -260,6 +285,8 @@ const showOrganDetail = ref(false)
 const showStageDetail = ref(false)
 const showCameraChoice = ref(false)
 const loadingAISolution = ref(false)
+const qualityResult = ref(null)
+const showQualityDetail = ref(false)
 
 // 기본 상태
 const userName = ref('식물집사') 
@@ -636,32 +663,111 @@ async function analyzeGrowth(imageFile) {
   }
 }
 
+// 등급 번역 사전 추가
+const GRADE_DICT = {
+  "S": {
+    label: "S등급 (특상)",
+    description: "최상급 품질입니다. 상품성이 매우 우수합니다.",
+    color: "#ffd700"
+  },
+  "A": {
+    label: "A등급 (상)",
+    description: "우수한 품질입니다. 상품성이 좋습니다.",
+    color: "#c0c0c0"
+  },
+  "B": {
+    label: "B등급 (중)",
+    description: "보통 품질입니다. 개선이 필요합니다.",
+    color: "#cd7f32"
+  },
+  "default": {
+    label: "등급 미분류",
+    description: "등급을 판정할 수 없습니다.",
+    color: "#95a5a6"
+  }
+}
+
+// 등급 분석 함수 추가
+async function analyzeQuality(imageFile) {
+  const formData = new FormData()
+  formData.append("file", imageFile)
+  
+  try {
+    console.log('🏆 등급 API 요청 시작:', QUALITY_API_URL)
+    
+    const response = await fetch(QUALITY_API_URL, { 
+      method: 'POST', 
+      body: formData 
+    })
+    
+    console.log('📡 등급 API 응답 상태:', response.status, response.statusText)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ 등급 API 응답 오류:', errorText)
+      throw new Error(`등급 API 오류: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    console.log('📦 등급 API 원본 응답:', JSON.stringify(data, null, 2))
+
+    if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
+      const prediction = data.predictions[0]
+      const grade = prediction.grade
+      const gradeInfo = GRADE_DICT[grade] || GRADE_DICT.default
+      
+      console.log(`🏆 등급: ${grade} (신뢰도: ${(prediction.confidence * 100).toFixed(1)}%)`)
+
+      return {
+        grade: grade,
+        label: gradeInfo.label,
+        description: gradeInfo.description,
+        color: gradeInfo.color,
+        confidence: prediction.confidence,
+        bbox: prediction.bbox
+      }
+    }
+    
+    console.warn('⚠️ 등급 정보 없음')
+    return null
+
+  } catch (err) {
+    console.error('💥 등급 분석 예외 발생:', err)
+    return null
+  }
+}
+
 const handleImageFile = async (file) => {
   if (!file) {
     console.warn('⚠️ 파일이 선택되지 않음')
     return
   }
   
-  console.log('📸 이미지 분석 시작:', file.name)
+  console.log('📸 이미지 분석 시작 (병충해 + 생육 + 등급):', file.name)
   
   showCameraChoice.value = false
   analyzingPest.value = true
   pestResult.value = null
   growthResult.value = null
+  qualityResult.value = null
 
   try {
-    const [pestRes, growthRes] = await Promise.all([
+    // ✅ 3개 API 병렬 호출
+    const [pestRes, growthRes, qualityRes] = await Promise.all([
       analyzePest(file), 
-      analyzeGrowth(file)
+      analyzeGrowth(file),
+      analyzeQuality(file)
     ])
     
     console.log('✅ 병충해 결과:', pestRes)
     console.log('✅ 생육 결과:', growthRes)
+    console.log('✅ 등급 결과:', qualityRes)
     
     pestResult.value = pestRes
     growthResult.value = growthRes
+    qualityResult.value = qualityRes
     
-    if (pestRes.className === 'error' && !growthRes) {
+    if (pestRes.className === 'error' && !growthRes && !qualityRes) {
       alert('분석에 실패했습니다. 네트워크를 확인하거나 다시 시도해주세요.')
     } else {
       showPestResult.value = true
@@ -694,6 +800,10 @@ const closePestResult = () => {
   showPestDetail.value = false
   showOrganDetail.value = false
   showStageDetail.value = false
+  showQualityDetail.value = false
+  pestResult.value = null
+  growthResult.value = null
+  qualityResult.value = null 
 }
 const saveAnalysisResult = () => { 
   alert('분석 결과가 저장되었습니다!'); 
@@ -711,7 +821,19 @@ const togglePestDetail = async () => {
 }
 const toggleOrganDetail = () => showOrganDetail.value = !showOrganDetail.value
 const toggleStageDetail = () => showStageDetail.value = !showStageDetail.value
+const toggleQualityDetail = () => {
+  showQualityDetail.value = !showQualityDetail.value
+}
 const getStageTip = (s) => s ? '관리에 신경써주세요.' : ''
+
+const getQualityAdvice = (grade) => {
+  const advice = {
+    'S': '현재 최상급 상태입니다. 지금처럼 관리를 계속 유지하세요. 햇빛, 물, 온도가 모두 이상적입니다.',
+    'A': '우수한 상태입니다. 조금만 더 신경쓰면 특상급이 될 수 있습니다. 물주기 주기를 조금 더 세심하게 관리해보세요.',
+    'B': '개선이 필요합니다. 물주기, 햇빛, 비료 관리를 점검해보세요. 잎에 먼지가 쌓였다면 닦아주는 것도 좋습니다.'
+  }
+  return advice[grade] || '전문가와 상담을 권장합니다.'
+}
 
 // 실시간 업데이트 설정
 async function setupRealtime() {
@@ -1091,4 +1213,16 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .save-result-btn { margin: 16px; padding: 14px; background: linear-gradient(135deg, #4a6444 0%, #6b856b 100%); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: transform 0.2s; }
 .save-result-btn:hover { transform: translateY(-1px); }
 .save-result-btn:active { transform: translateY(0); }
+
+/* 등급 카드 스타일 추가 */
+.quality-card {
+  border-left: 4px solid #ffd700;
+}
+
+.quality-grade {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+}
 </style>
