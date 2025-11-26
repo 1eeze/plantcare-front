@@ -337,6 +337,21 @@ export default {
       }
     }
 
+    const applyPrefillFromQuery = () => {
+      if (editPostId) return
+
+      const { price, title } = route.query
+
+      if (typeof title === 'string' && title.trim()) {
+        formData.value.title = title
+      }
+
+      const parsedPrice = Number(price)
+      if (!Number.isNaN(parsedPrice)) {
+        formData.value.price = parsedPrice
+      }
+    }
+
     onMounted(async () => {
       await fetchUserInfo()
       
@@ -357,6 +372,8 @@ export default {
           // 수정 시에는 기존 이미지 URL을 formData에 넣어둠 (변경 감지용)
           formData.value.image = data.image 
         }
+      } else {
+        applyPrefillFromQuery()
       }
     })
 

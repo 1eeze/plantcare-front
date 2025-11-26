@@ -238,12 +238,20 @@ export default {
       return change > 0 ? "positive" : change < 0 ? "negative" : "neutral";
     },
     handleBuy() {
-      // 구매 로직
-      console.log("구매 버튼 클릭");
+      const query = this.plantName?.trim();
+      this.$router.push({
+        name: "Community",
+        query: query ? { q: query } : undefined
+      });
     },
     handleSell() {
-      // 판매 로직
-      console.log("판매 버튼 클릭");
+      this.$router.push({
+        name: "WritePost",
+        query: {
+          price: this.sellPrice,
+          title: this.plantName
+        }
+      });
     }
   }
 }

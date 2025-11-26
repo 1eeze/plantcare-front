@@ -158,11 +158,12 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 
 const router = useRouter()
+const route = useRoute()
 
 const searchQuery = ref('')
 const loading = ref(false)
@@ -244,6 +245,25 @@ const searchPlant = async () => {
     loading.value = false
   }
 }
+
+onMounted(() => {
+  const initialQuery = typeof route.query.q === 'string' ? route.query.q : ''
+  if (initialQuery.trim()) {
+    searchQuery.value = initialQuery
+    searchPlant()
+  }
+})
+
+watch(
+  () => route.query.q,
+  (newQuery, oldQuery) => {
+    if (newQuery === oldQuery) return
+    if (typeof newQuery === 'string' && newQuery.trim()) {
+      searchQuery.value = newQuery
+      searchPlant()
+    }
+  }
+)
 </script>
 
 <style scoped>

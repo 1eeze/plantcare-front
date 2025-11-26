@@ -250,6 +250,10 @@ export default {
   watch: {
     showComment(val) {
       this.$emit('comment-visibility', val)
+    },
+    '$route.query.q'(newQuery, oldQuery) {
+      if (newQuery === oldQuery) return
+      this.applyQuerySearch()
     }
   },
 
@@ -260,6 +264,7 @@ export default {
     
     // 2. 게시글 로드
     await this.fetchPosts()
+    this.applyQuerySearch()
     
     // 3. 실시간 구독 시작
     this.setupRealtime()
@@ -415,6 +420,12 @@ export default {
     goToComments(postId) { this.selectedPostId = postId; this.showComment = true },
     goToProfile(userId) { this.$router.push(`/profile/${userId}`) },
     sharePost(post) { if (navigator.share) { navigator.share({ title: post.title, text: post.text, url: window.location.href }) } else { alert('공유 기능이 지원되지 않는 브라우저입니다.') } },
+    applyQuerySearch() {
+      const q = this.$route.query.q
+      if (typeof q === 'string') {
+        this.searchQuery = q
+      }
+    },
     
     openChat(post) {
       const chatId = `chat-${post.id}-${Date.now()}`
