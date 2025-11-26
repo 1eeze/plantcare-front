@@ -64,7 +64,7 @@
 
     <!-- 게시글 리스트 -->
     <div v-else class="posts-container">
-      <div v-for="post in filteredPosts" :key="post.id" class="post-card" @click="goToPost(post.id)" role="button" tabindex="0" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
+      <div v-for="post in filteredPosts" :key="post.id" class="post-card">
         <!-- 상품 이미지 -->
         <div class="post-image-wrapper">
           <div class="post-body" :style="{ backgroundImage: `url(${post.image})` }">
@@ -420,7 +420,7 @@ export default {
     goToComments(postId) { this.selectedPostId = postId; this.showComment = true },
     goToProfile(userId, name) {
       const target = userId || name
-      if (!target) return alert('사용자 정보를 찾을 수 없습니다.')
+      if (!target) return
       this.$router.push(`/profile/${target}`)
     },
     sharePost(post) { if (navigator.share) { navigator.share({ title: post.title, text: post.text, url: window.location.href }) } else { alert('공유 기능이 지원되지 않는 브라우저입니다.') } },
