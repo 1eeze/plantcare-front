@@ -9,19 +9,7 @@
       
       <div class="sns-circle-group">
 
-        <div class="sns-circle-button" @click="handleNaverLogin('naver')">
-          <button class="gsi-material-button">
-            <div class="gsi-material-button-state"></div>
-            <div class="gsi-material-button-content-wrapper">
-              <div class="gsi-material-button-icon">
-                <img class="naver-img" src="../../assets/btnW_아이콘원형.png" alt="네이버" />
-              </div>
-            </div>
-          </button>
-          <span>네이버</span>
-        </div>
-
-        <div class="sns-circle-button" @click="handleKakaoLogin('kakao')">
+        <div class="sns-circle-button" @click="handleKakaoLogin">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
@@ -33,7 +21,7 @@
           <span>카카오</span>
         </div>
 
-        <div class="sns-circle-button" @click="handleGoogleLogin('google')">
+        <div class="sns-circle-button" @click="handleGoogleLogin">
           <button class="gsi-material-button">
             <div class="gsi-material-button-state"></div>
             <div class="gsi-material-button-content-wrapper">
@@ -76,15 +64,6 @@ const emit = defineEmits(['next'])
 const router = useRouter()
 
 // (우리 코드) supabase.auth.signInWithOAuth를 사용하는 로직을 최종본으로 선택
-const handleNaverLogin = async () => {
-  await supabase.auth.signInWithOAuth({
-    provider: 'naver',
-    options: {
-      redirectTo: window.location.origin
-    }
-  })
-}
-
 const handleKakaoLogin = async () => {
   await supabase.auth.signInWithOAuth({
     provider: 'kakao',
@@ -189,13 +168,6 @@ h2 {
 .gsi-material-button svg {
   width: 100%;
   height: 100%;
-}
-
-.naver-img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  border-radius: 50%;
 }
 
 .kakao-img {
