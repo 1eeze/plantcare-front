@@ -704,6 +704,7 @@ export default {
       })
 
       // 1-1) plant_id가 없는 글 중 일부는 제목/작성자로 User_Plants 매칭해서 plant_id/품질을 채움
+      const plantPhotoCache = {}
       const missingPlantPosts = slice.filter(p => !p.plant_id && p.user_id && p.title).slice(0, 5)
       const plantMetaCache = {}
       for (const post of missingPlantPosts) {
@@ -726,6 +727,7 @@ export default {
             const photoUrl = this.extractPhotoUrl(plantRow.photos)
             if (photoUrl) {
               plantMetaCache[plantRow.id] = plantMetaCache[plantRow.id] || plantRow
+              plantPhotoCache[plantRow.id] = photoUrl
             }
           }
         } catch (err) {
@@ -733,8 +735,24 @@ export default {
         }
       }
 
+      // 1-2) 게시글 이미지 혹은 식물 사진 기반 품질/신뢰도 계산 큐 구성
+      let photoPredictQueue = []
+      slice.forEach(post => {
+        const gradeMissing = !post.quality_grade || post.quality_grade === '-' || post.quality_grade === null
+        const confidenceMissing = post.quality_confidence === null || post.quality_confidence === undefined
+        const photoUrl = post.image || (post.plant_id ? plantPhotoCache[post.plant_id] : null)
+        if (photoUrl && (gradeMissing || confidenceMissing)) {
+          photoPredictQueue.push({ post, photoUrl })
+        }
+      })
+
       const plantIds = slice.map(p => p.plant_id).filter(Boolean)
-      if (plantIds.length === 0) return
+      if (plantIds.length === 0) {
+        for (const item of photoPredictQueue) {
+          await this.analyzeQualityFromPhoto(item.post, item.photoUrl)
+        }
+        return
+      }
 
       try {
         // 2) 품질 메타 한번에 조회
@@ -782,7 +800,7 @@ export default {
           })
         }
 
-        const photoPredictQueue = []
+        photoPredictQueue = []
 
         slice.forEach(post => {
           const pid = post.plant_id
