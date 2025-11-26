@@ -778,8 +778,8 @@ export default {
           }
         })
 
-        // 사진 기반 자동 품질 계산 (너무 많이 호출하지 않도록 최대 3개만)
-        for (const item of photoPredictQueue.slice(0, 3)) {
+        // 사진 기반 자동 품질 계산 (게시글 이미지/식물 사진이 있고 아직 등급이 없는 경우)
+        for (const item of photoPredictQueue) {
           await this.analyzeQualityFromPhoto(item.post, item.photoUrl)
         }
       } catch (err) {
