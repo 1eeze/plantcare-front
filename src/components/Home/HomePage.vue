@@ -39,7 +39,11 @@
               <p class="detail-value">{{ pestResult?.className }}</p>
               
               <p class="detail-label">대응 방법</p>
-              <p class="detail-value">{{ getPestSolution(pestResult?.className) }}</p>
+              <div v-if="loadingAISolution" class="solution-loading">
+                <div class="mini-spinner"></div>
+                <p>AI가 맞춤 대응 방법을 생성하는 중...</p>
+              </div>
+              <p v-else class="detail-value">{{ pestResult?.aiSolution || '대응 방법을 불러올 수 없습니다.' }}</p>
             </div>
           </div>
 
@@ -78,6 +82,30 @@
             <div v-if="showStageDetail && growthResult" class="card-detail">
               <p class="detail-label">관리 팁</p>
               <p class="detail-value">{{ getStageTip(growthResult?.stage) }}</p>
+            </div>
+          </div>
+
+          <div class="result-card quality-card" @click="toggleQualityDetail">
+            <div class="card-header">
+              <span class="card-icon">🏆</span>
+              <h4>품질 등급</h4>
+              <span class="expand-icon">{{ showQualityDetail ? '▼' : '▶' }}</span>
+            </div>
+            <div class="card-summary">
+              <p class="quality-grade" :style="{ color: qualityResult?.color }">
+                {{ qualityResult?.label || '감지되지 않음' }}
+              </p>
+              <p v-if="qualityResult?.confidence" class="confidence">
+                신뢰도: {{ (qualityResult.confidence * 100).toFixed(1) }}%
+              </p>
+            </div>
+            
+            <div v-if="showQualityDetail && qualityResult" class="card-detail">
+              <p class="detail-label">등급 설명</p>
+              <p class="detail-value">{{ qualityResult?.description }}</p>
+              
+              <p class="detail-label">개선 방안</p>
+              <p class="detail-value">{{ getQualityAdvice(qualityResult?.grade) }}</p>
             </div>
           </div>
         </div>
@@ -244,6 +272,7 @@ const router = useRouter()
 // API URLs
 const PEST_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/pest'
 const GROWTH_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/growth'
+const QUALITY_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/quality'
 
 // 병충해 분석 관련 상태
 const analyzingPest = ref(false)
@@ -255,6 +284,9 @@ const showPestDetail = ref(false)
 const showOrganDetail = ref(false)
 const showStageDetail = ref(false)
 const showCameraChoice = ref(false)
+const loadingAISolution = ref(false)
+const qualityResult = ref(null)
+const showQualityDetail = ref(false)
 
 // 기본 상태
 const userName = ref('식물집사') 
@@ -307,8 +339,59 @@ const PEST_DICT = {
 const ORGAN_DICT = { "fruit": "열매", "flower": "꽃", "leaf": "잎", "stem": "줄기" }
 const STAGE_DICT = { "seedling": "파종기 (새싹)", "growing": "성장기 (영양생장)", "flowering/fruiting": "개화/결실기" }
 
-const PEST_SOLUTION = {
-  "default": "전문가와 상담 후 적절한 방제법을 선택하세요."
+// Claude API를 사용한 병충해 대응 방법 생성 (NEW!)
+const generateAISolution = async (pestName, pestClassName) => {
+  loadingAISolution.value = true
+  
+  try {
+    console.log('🤖 Claude API로 대응 방법 생성 시작:', pestName)
+    
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
+
+    const prompt = `당신은 식물 병충해 전문가입니다. 다음 병충해에 대한 대응 방법을 작성해주세요.
+
+병충해 이름: ${pestName}
+원본 클래스명: ${pestClassName}
+
+다음 형식으로 간결하게 3-4문장으로 작성해주세요:
+1. 해당 병충해의 간단한 특징 (1문장)
+2. 초기 대응 방법 (1-2문장)
+3. 예방 방법 (1문장)
+
+전문 용어는 피하고, 일반 가정에서 실천 가능한 방법 위주로 설명해주세요.`
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token || ''}`
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 500,
+        messages: [
+          { role: 'user', content: prompt }
+        ]
+      })
+    })
+
+    if (!response.ok) {
+      throw new Error(`Claude API 오류: ${response.status}`)
+    }
+
+    const data = await response.json()
+    console.log('🤖 Claude API 응답:', data)
+
+    const aiSolution = data.content?.[0]?.text || '대응 방법을 생성할 수 없습니다.'
+    
+    return aiSolution
+  } catch (err) {
+    console.error('💥 AI 대응 방법 생성 실패:', err)
+    return '대응 방법을 불러오는 중 오류가 발생했습니다. 전문가와 상담하시기 바랍니다.'
+  } finally {
+    loadingAISolution.value = false
+  }
 }
 
 // JSONB 배열에서 최신 값 추출
@@ -401,7 +484,7 @@ const loadUserNickname = async () => {
   } catch (e) { console.error(e) }
 }
 
-// 병충해 분석 (개선 버전)
+// 병충해 분석
 async function analyzePest(imageFile) {
   const formData = new FormData()
   formData.append("file", imageFile)
@@ -433,13 +516,18 @@ async function analyzePest(imageFile) {
       
       const className = firstPrediction.class_name || firstPrediction.class || firstPrediction.label
       const confidence = firstPrediction.confidence || firstPrediction.score || 0
+      const krName = PEST_DICT[className] || PEST_DICT.default
       
       console.log(`🐛 감지됨: ${className} (신뢰도: ${(confidence * 100).toFixed(1)}%)`)
       
+      // AI 대응 방법 생성
+      const aiSolution = await generateAISolution(krName, className)
+      
       return { 
         className: className, 
-        krName: PEST_DICT[className] || PEST_DICT.default, 
-        confidence: confidence 
+        krName: krName, 
+        confidence: confidence,
+        aiSolution: aiSolution
       }
     }
     
@@ -447,14 +535,19 @@ async function analyzePest(imageFile) {
     if (data.class_name || data.class || data.label) {
       const className = data.class_name || data.class || data.label
       const confidence = data.confidence || data.score || 0
+      const krName = PEST_DICT[className] || PEST_DICT.default
       
       console.log('✅ 직접 클래스명 발견:', className)
       console.log(`🐛 감지됨: ${className} (신뢰도: ${(confidence * 100).toFixed(1)}%)`)
       
+      // AI 대응 방법 생성
+      const aiSolution = await generateAISolution(krName, className)
+      
       return { 
         className: className, 
-        krName: PEST_DICT[className] || PEST_DICT.default, 
-        confidence: confidence 
+        krName: krName, 
+        confidence: confidence,
+        aiSolution: aiSolution
       }
     }
     
@@ -464,12 +557,11 @@ async function analyzePest(imageFile) {
     
     // 재귀적으로 class나 prediction 찾기
     const searchForPrediction = (obj, depth = 0) => {
-      if (depth > 3) return null // 최대 깊이 제한
+      if (depth > 3) return null
       
       for (const key of Object.keys(obj)) {
         const value = obj[key]
         
-        // class 관련 키 찾기
         if ((key.toLowerCase().includes('class') || 
              key.toLowerCase().includes('label') ||
              key.toLowerCase().includes('prediction')) && 
@@ -477,13 +569,11 @@ async function analyzePest(imageFile) {
           return { className: value, confidence: obj.confidence || obj.score || 0 }
         }
         
-        // 배열인 경우
         if (Array.isArray(value) && value.length > 0) {
           const result = searchForPrediction(value[0], depth + 1)
           if (result) return result
         }
         
-        // 객체인 경우
         if (typeof value === 'object' && value !== null) {
           const result = searchForPrediction(value, depth + 1)
           if (result) return result
@@ -495,10 +585,14 @@ async function analyzePest(imageFile) {
     const foundPrediction = searchForPrediction(data)
     if (foundPrediction) {
       console.log('🔎 재귀 탐색으로 발견:', foundPrediction)
+      const krName = PEST_DICT[foundPrediction.className] || PEST_DICT.default
+      const aiSolution = await generateAISolution(krName, foundPrediction.className)
+      
       return {
         className: foundPrediction.className,
-        krName: PEST_DICT[foundPrediction.className] || PEST_DICT.default,
-        confidence: foundPrediction.confidence
+        krName: krName,
+        confidence: foundPrediction.confidence,
+        aiSolution: aiSolution
       }
     }
     
@@ -506,20 +600,22 @@ async function analyzePest(imageFile) {
     console.warn('❌ 예측 결과 없음')
     return { 
       className: 'none', 
-      krName: "탐지된 병충해 없음 (응답 형식 불일치)", 
-      confidence: 0 
+      krName: "탐지된 병충해 없음", 
+      confidence: 0,
+      aiSolution: '병충해가 감지되지 않았습니다. 식물이 건강합니다!'
     }
   } catch (err) {
     console.error('💥 병충해 분석 예외 발생:', err)
     return { 
       className: 'error', 
       krName: `판별 오류: ${err.message}`, 
-      confidence: 0 
+      confidence: 0,
+      aiSolution: '분석 중 오류가 발생했습니다.'
     }
   }
 }
 
-// 생육 분석 (개선 버전)
+// 생육 분석
 async function analyzeGrowth(imageFile) {
   const formData = new FormData()
   formData.append("file", imageFile)
@@ -543,7 +639,6 @@ async function analyzeGrowth(imageFile) {
     const data = await response.json()
     console.log('📦 생육 API 원본 응답:', JSON.stringify(data, null, 2))
 
-    // 응답 형식 1: predictions 객체 (실제 API 구조)
     if (data.predictions && typeof data.predictions === 'object' && !Array.isArray(data.predictions)) {
       const p = data.predictions
       console.log('✅ 생육 정보 발견 (predictions 객체):', p)
@@ -561,7 +656,6 @@ async function analyzeGrowth(imageFile) {
       }
     }
     
-    // 응답 형식 2: predictions 배열
     if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
       const p = data.predictions[0]
       console.log('✅ 생육 정보 발견 (predictions 배열):', p)
@@ -573,7 +667,6 @@ async function analyzeGrowth(imageFile) {
       }
     }
     
-    // 응답 형식 3: 직접 organ/stage
     if (data.organ && data.stage) {
       console.log('✅ 생육 정보 발견 (직접):', data)
       return { 
@@ -592,32 +685,111 @@ async function analyzeGrowth(imageFile) {
   }
 }
 
+// 등급 번역 사전 추가
+const GRADE_DICT = {
+  "S": {
+    label: "S등급 (특상)",
+    description: "최상급 품질입니다. 상품성이 매우 우수합니다.",
+    color: "#ffd700"
+  },
+  "A": {
+    label: "A등급 (상)",
+    description: "우수한 품질입니다. 상품성이 좋습니다.",
+    color: "#c0c0c0"
+  },
+  "B": {
+    label: "B등급 (중)",
+    description: "보통 품질입니다. 개선이 필요합니다.",
+    color: "#cd7f32"
+  },
+  "default": {
+    label: "등급 미분류",
+    description: "등급을 판정할 수 없습니다.",
+    color: "#95a5a6"
+  }
+}
+
+// 등급 분석 함수 추가
+async function analyzeQuality(imageFile) {
+  const formData = new FormData()
+  formData.append("file", imageFile)
+  
+  try {
+    console.log('🏆 등급 API 요청 시작:', QUALITY_API_URL)
+    
+    const response = await fetch(QUALITY_API_URL, { 
+      method: 'POST', 
+      body: formData 
+    })
+    
+    console.log('📡 등급 API 응답 상태:', response.status, response.statusText)
+    
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ 등급 API 응답 오류:', errorText)
+      throw new Error(`등급 API 오류: ${response.statusText}`)
+    }
+    
+    const data = await response.json()
+    console.log('📦 등급 API 원본 응답:', JSON.stringify(data, null, 2))
+
+    if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
+      const prediction = data.predictions[0]
+      const grade = prediction.grade
+      const gradeInfo = GRADE_DICT[grade] || GRADE_DICT.default
+      
+      console.log(`🏆 등급: ${grade} (신뢰도: ${(prediction.confidence * 100).toFixed(1)}%)`)
+
+      return {
+        grade: grade,
+        label: gradeInfo.label,
+        description: gradeInfo.description,
+        color: gradeInfo.color,
+        confidence: prediction.confidence,
+        bbox: prediction.bbox
+      }
+    }
+    
+    console.warn('⚠️ 등급 정보 없음')
+    return null
+
+  } catch (err) {
+    console.error('💥 등급 분석 예외 발생:', err)
+    return null
+  }
+}
+
 const handleImageFile = async (file) => {
   if (!file) {
     console.warn('⚠️ 파일이 선택되지 않음')
     return
   }
   
-  console.log('📸 이미지 분석 시작:', file.name)
+  console.log('📸 이미지 분석 시작 (병충해 + 생육 + 등급):', file.name)
   
   showCameraChoice.value = false
   analyzingPest.value = true
   pestResult.value = null
   growthResult.value = null
+  qualityResult.value = null
 
   try {
-    const [pestRes, growthRes] = await Promise.all([
+    // ✅ 3개 API 병렬 호출
+    const [pestRes, growthRes, qualityRes] = await Promise.all([
       analyzePest(file), 
-      analyzeGrowth(file)
+      analyzeGrowth(file),
+      analyzeQuality(file)
     ])
     
     console.log('✅ 병충해 결과:', pestRes)
     console.log('✅ 생육 결과:', growthRes)
+    console.log('✅ 등급 결과:', qualityRes)
     
     pestResult.value = pestRes
     growthResult.value = growthRes
+    qualityResult.value = qualityRes
     
-    if (pestRes.className === 'error' && !growthRes) {
+    if (pestRes.className === 'error' && !growthRes && !qualityRes) {
       alert('분석에 실패했습니다. 네트워크를 확인하거나 다시 시도해주세요.')
     } else {
       showPestResult.value = true
@@ -654,6 +826,10 @@ const closePestResult = () => {
   showPestDetail.value = false
   showOrganDetail.value = false
   showStageDetail.value = false
+  showQualityDetail.value = false
+  pestResult.value = null
+  growthResult.value = null
+  qualityResult.value = null 
 }
 const saveAnalysisResult = async () => {
   try {
@@ -692,8 +868,19 @@ const saveAnalysisResult = async () => {
 const togglePestDetail = () => showPestDetail.value = !showPestDetail.value
 const toggleOrganDetail = () => showOrganDetail.value = !showOrganDetail.value
 const toggleStageDetail = () => showStageDetail.value = !showStageDetail.value
-const getPestSolution = (cls) => PEST_SOLUTION[cls] || PEST_SOLUTION.default
+const toggleQualityDetail = () => {
+  showQualityDetail.value = !showQualityDetail.value
+}
 const getStageTip = (s) => s ? '관리에 신경써주세요.' : ''
+
+const getQualityAdvice = (grade) => {
+  const advice = {
+    'S': '현재 최상급 상태입니다. 지금처럼 관리를 계속 유지하세요. 햇빛, 물, 온도가 모두 이상적입니다.',
+    'A': '우수한 상태입니다. 조금만 더 신경쓰면 특상급이 될 수 있습니다. 물주기 주기를 조금 더 세심하게 관리해보세요.',
+    'B': '개선이 필요합니다. 물주기, 햇빛, 비료 관리를 점검해보세요. 잎에 먼지가 쌓였다면 닦아주는 것도 좋습니다.'
+  }
+  return advice[grade] || '전문가와 상담을 권장합니다.'
+}
 
 // 리포트 관련 함수
 const loadRecentReports = async () => {
@@ -799,7 +986,7 @@ async function setupRealtime() {
     .subscribe()
 }
 
-// 식물 목록 로드 (센서 데이터 포함)
+// 식물 목록 로드
 const loadPlants = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
@@ -918,7 +1105,7 @@ onUnmounted(() => {
 })
 
 const openNotifications = () => router.push('/notification')
-const viewAllPlants = () => {}
+const viewAllPlants = () => router.push('/all-plants')
 const goToPlantDetail = (id) => router.push(`/plant-detail/${id}`)
 const addPlant = () => router.push('/add-plant')
 const waterAllPlants = () => {}
@@ -1102,6 +1289,31 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .detail-label:first-child { margin-top: 0; }
 .detail-value { font-size: 13px; color: #2c3e50; margin: 0 0 8px 0; line-height: 1.5; }
 
+/* AI 대응 방법 로딩 */
+.solution-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.mini-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #cbd5c0;
+  border-top-color: #4a6444;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+.solution-loading p {
+  margin: 0;
+  font-size: 12px;
+  color: #7f8c8d;
+}
+
 /* 카드별 색상 구분 */
 .pest-card { border-left: 4px solid #ff6b6b; }
 .organ-card { border-left: 4px solid #4ecdc4; }
@@ -1111,4 +1323,16 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .save-result-btn { margin: 16px; padding: 14px; background: linear-gradient(135deg, #4a6444 0%, #6b856b 100%); color: white; border: none; border-radius: 12px; font-size: 15px; font-weight: 600; cursor: pointer; transition: transform 0.2s; }
 .save-result-btn:hover { transform: translateY(-1px); }
 .save-result-btn:active { transform: translateY(0); }
+
+/* 등급 카드 스타일 추가 */
+.quality-card {
+  border-left: 4px solid #ffd700;
+}
+
+.quality-grade {
+  font-size: 18px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin: 0 0 4px 0;
+}
 </style>

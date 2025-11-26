@@ -2,23 +2,27 @@
   <div class="chat-room-container">
     <div class="header">
       <button @click="goBack" class="back-btn">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>
+        </svg>
       </button>
       
-      <div class="chat-info" @click="goToProfile">
+      <div class="chat-info">
         <span class="receiver-name">{{ customRoomName || receiverName }}</span>
         <span v-if="isNotificationMuted" style="font-size: 12px; margin-left: 5px;">🔕</span>
       </div>
       
       <button @click="openMenu" class="menu-btn">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>
+        </svg>
       </button>
     </div>
 
-    <div class="chat-messages" ref="messageContainer">
+    <div class="chat-messages" ref="messageContainer" @click="closeAttachmentMenu">
       <div v-if="loadingMessages" class="loading-state">
         <div class="loading-spinner"></div>
-        <p>메시지 로드 중...</p>
+        <p>대화 내용을 불러오는 중...</p>
       </div>
       
       <div v-else-if="messages.length === 0" class="empty-state">
@@ -27,7 +31,6 @@
       </div>
 
       <template v-for="msg in messages" :key="msg.id">
-        
         <div v-if="msg.content === '::SYSTEM_LEAVE::'" class="system-message">
           <p v-if="msg.sender_id === currentUser?.id">당신이 채팅방을 나갔습니다.</p>
           <p v-else>{{ receiverName }}님이 채팅방을 나갔습니다.</p>
@@ -46,12 +49,26 @@
 
             <div class="bubble-row">
               <div v-if="msg.sender_id === currentUser?.id" class="message-meta my-meta">
-                <span v-if="!msg.is_read" class="unread-text">읽지 않음</span>
+                <span v-if="!msg.is_read" class="unread-mark">읽지 않음</span>
                 <span class="message-time">{{ formatTime(msg.created_at) }}</span>
               </div>
 
-              <div class="message-bubble">
-                {{ msg.content }}
+              <div class="message-bubble-wrapper">
+                <div v-if="isImageMessage(msg.content)" class="media-message">
+                  <img :src="msg.content" alt="이미지" @click="openImageModal(msg.content)" />
+                </div>
+                <div v-else-if="isVideoMessage(msg.content)" class="media-message">
+                  <video :src="msg.content" controls></video>
+                </div>
+                <div v-else-if="isFileMessage(msg.content)" class="file-message">
+                  <a :href="msg.content" target="_blank" download>
+                    <span class="file-icon">📄</span>
+                    <span class="file-text">파일 다운로드</span>
+                  </a>
+                </div>
+                <div v-else class="message-bubble">
+                  {{ msg.content }}
+                </div>
               </div>
 
               <div v-if="msg.sender_id !== currentUser?.id" class="message-meta other-meta">
@@ -69,16 +86,55 @@
       <div ref="bottomElement" class="bottom-spacer"></div>
     </div>
 
-    <div class="chat-input-area">
-      <input 
-        :value="newMessage"
-        @input="onInput"
-        @keyup.enter="sendMessage"
-        :placeholder="isDeletedUser ? '대화가 불가능합니다.' : '메시지를 입력하세요...'"
-        :disabled="isDeletedUser"
-      />
-      <button @click="sendMessage" :disabled="!newMessage.trim() || isDeletedUser">전송</button>
+    <div class="bottom-container">
+      <div class="chat-input-area">
+        <button 
+          class="plus-btn" 
+          :class="{ active: showAttachmentMenu }"
+          @click="toggleAttachmentMenu" 
+          :disabled="isDeletedUser"
+        >
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"></line>
+            <line x1="5" y1="12" x2="19" y2="12"></line>
+          </svg>
+        </button>
+
+        <input 
+          :value="newMessage"
+          @input="onInput"
+          @keyup.enter="sendMessage"
+          :placeholder="isDeletedUser ? '대화가 불가능합니다.' : '메시지를 입력하세요...'"
+          :disabled="isDeletedUser"
+        />
+        <button class="send-btn" @click="sendMessage" :disabled="!newMessage.trim() || isDeletedUser">전송</button>
+      </div>
+
+      <div v-if="showAttachmentMenu" class="attachment-menu">
+        <button class="attach-item" @click="triggerImageUpload">
+          <div class="icon-wrapper">
+            <img :src="iconPhoto" alt="사진" />
+          </div>
+          <span>사진</span>
+        </button>
+        <button class="attach-item" @click="triggerFileUpload">
+          <div class="icon-wrapper">
+            <img :src="iconFile" alt="파일" />
+          </div>
+          <span>파일</span>
+        </button>
+        <button class="attach-item" @click="triggerVideoUpload">
+          <div class="icon-wrapper">
+            <img :src="iconVideo" alt="동영상" />
+          </div>
+          <span>동영상</span>
+        </button>
+      </div>
     </div>
+
+    <input type="file" ref="imageInputRef" accept="image/*" style="display: none" @change="handleFileUpload" />
+    <input type="file" ref="fileInputRef" accept="*/*" style="display: none" @change="handleFileUpload" />
+    <input type="file" ref="videoInputRef" accept="video/*" style="display: none" @change="handleFileUpload" />
 
     <div v-if="showMenuModal" class="menu-overlay" @click="closeMenu">
       <div class="menu-content" @click.stop>
@@ -98,6 +154,11 @@
         <button class="close-menu-btn" @click="closeMenu">닫기</button>
       </div>
     </div>
+
+    <div v-if="zoomedImage" class="image-zoom-overlay" @click="zoomedImage = null">
+      <img :src="zoomedImage" class="zoomed-image" />
+      <button class="close-zoom" @click="zoomedImage = null">✕</button>
+    </div>
   </div>
 </template>
 
@@ -106,6 +167,11 @@ import { ref, onMounted, onBeforeUnmount, nextTick, watch, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 import defaultAvatar from '@/assets/user-profile.png'
+
+// 아이콘 이미지 import (경로가 맞는지 꼭 확인해주세요!)
+import iconPhoto from '@/assets/icons/photo.png'
+import iconVideo from '@/assets/icons/video.png'
+import iconFile from '@/assets/icons/file.png'
 
 const router = useRouter()
 const route = useRoute()
@@ -124,26 +190,110 @@ let subscription = null
 
 const showMenuModal = ref(false)
 const isNotificationMuted = ref(false)
+const zoomedImage = ref(null) 
+
+// [추가] 첨부파일 메뉴 상태 및 Refs
+const showAttachmentMenu = ref(false)
+const imageInputRef = ref(null)
+const fileInputRef = ref(null)
+const videoInputRef = ref(null)
 
 const isDeletedUser = computed(() => {
   return receiverId.value === 'deleted' || receiverName.value === '(알 수 없음)'
 })
 
-// [추가] 한글 입력 즉시 반영을 위한 핸들러
 const onInput = (e) => {
   newMessage.value = e.target.value
 }
 
+// ---------------- [UI 조작 함수] ----------------
+const toggleAttachmentMenu = () => {
+  showAttachmentMenu.value = !showAttachmentMenu.value
+  if (showAttachmentMenu.value) {
+    scrollToBottom()
+  }
+}
+
+const closeAttachmentMenu = () => {
+  if (showAttachmentMenu.value) {
+    showAttachmentMenu.value = false
+  }
+}
+
+const triggerImageUpload = () => imageInputRef.value.click()
+const triggerFileUpload = () => fileInputRef.value.click()
+const triggerVideoUpload = () => videoInputRef.value.click()
+
+// ---------------- [파일 업로드 로직] ----------------
+const handleFileUpload = async (event) => {
+  const file = event.target.files[0]
+  if (!file) return
+
+  // 메뉴 닫기
+  showAttachmentMenu.value = false
+
+  try {
+    // 파일명 생성 (한글 깨짐 방지를 위해 timestamp + random 사용)
+    const fileExt = file.name.split('.').pop()
+    const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 10)}.${fileExt}`
+    const filePath = `${fileName}`
+
+    // 1. 스토리지 업로드
+    const { error: uploadError } = await supabase.storage
+      .from('chat_uploads')
+      .upload(filePath, file)
+
+    if (uploadError) throw uploadError
+
+    // 2. 공개 URL 가져오기
+    const { data: urlData } = supabase.storage
+      .from('chat_uploads')
+      .getPublicUrl(filePath)
+
+    const publicUrl = urlData.publicUrl
+
+    // 3. 메시지 전송 (내용은 URL)
+    const { error: sendError } = await supabase.from('messages').insert({
+      sender_id: currentUser.value.id,
+      receiver_id: receiverId.value,
+      content: publicUrl,
+      is_read: false
+    })
+
+    if (sendError) throw sendError
+    scrollToBottom()
+
+  } catch (error) {
+    console.error('파일 업로드 실패:', error)
+    alert('파일 전송에 실패했습니다. Storage 버킷 설정을 확인해주세요.')
+  } finally {
+    event.target.value = '' // 초기화
+  }
+}
+
+// ---------------- [메시지 타입 판별] ----------------
+const isImageMessage = (content) => {
+  if (!content || !content.includes('chat_uploads')) return false
+  return /\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i.test(content)
+}
+
+const isVideoMessage = (content) => {
+  if (!content || !content.includes('chat_uploads')) return false
+  return /\.(mp4|mov|avi|wmv|flv|webm)$/i.test(content)
+}
+
+const isFileMessage = (content) => {
+  if (!content || !content.includes('chat_uploads')) return false
+  // 이미지와 비디오가 아니면 파일로 간주
+  return !isImageMessage(content) && !isVideoMessage(content)
+}
+
+const openImageModal = (url) => { zoomedImage.value = url }
+
+// ---------------- [기존 기능 복구: 설정 & 유저정보] ----------------
 const loadChatSettings = async () => {
   if (!currentUser.value || isDeletedUser.value) return
-
-  const { data } = await supabase
-    .from('chat_settings')
-    .select('custom_name, is_muted')
-    .eq('user_id', currentUser.value.id)
-    .eq('partner_id', receiverId.value)
-    .single()
-
+  const { data } = await supabase.from('chat_settings').select('custom_name, is_muted').eq('user_id', currentUser.value.id).eq('partner_id', receiverId.value).single()
   if (data) {
     if (data.custom_name) customRoomName.value = data.custom_name
     isNotificationMuted.value = data.is_muted
@@ -152,15 +302,7 @@ const loadChatSettings = async () => {
 
 const saveChatSettings = async (updates) => {
   if (!currentUser.value || isDeletedUser.value) return
-
-  const { error } = await supabase
-    .from('chat_settings')
-    .upsert({
-      user_id: currentUser.value.id,
-      partner_id: receiverId.value,
-      ...updates
-    })
-  
+  const { error } = await supabase.from('chat_settings').upsert({ user_id: currentUser.value.id, partner_id: receiverId.value, ...updates })
   if (error) console.error('설정 저장 실패:', error)
 }
 
@@ -175,100 +317,62 @@ const loadUserInfo = async () => {
             receiverAvatar.value = defaultAvatar
             return
         }
-
-        const { data: partnerData, error: partnerError } = await supabase
-            .from('Users')
-            .select('name, avatar_url')
-            .eq('id', receiverId.value)
-            .single()
-
+        const { data: partnerData, error: partnerError } = await supabase.from('Users').select('name, avatar_url').eq('id', receiverId.value).single()
         if (partnerError || !partnerData) {
             receiverName.value = '(알 수 없음)'
             receiverAvatar.value = defaultAvatar
         } else {
             receiverName.value = partnerData.name
-            receiverAvatar.value = partnerData.avatar_url
+            receiverAvatar.value = partnerData.avatar_url || defaultAvatar
         }
-        
         await loadChatSettings()
-    } catch (e) {
-        console.error('사용자 정보 로드 실패:', e)
-    }
+    } catch (e) { console.error('사용자 정보 로드 실패:', e) }
 }
 
 const loadMessages = async () => {
     loadingMessages.value = true
     try {
-        let query = supabase
-            .from('messages')
-            .select('*')
-            .order('created_at', { ascending: true })
-
+        let query = supabase.from('messages').select('*').order('created_at', { ascending: true })
         if (receiverId.value === 'deleted') {
             query = query.or(`and(sender_id.eq.${currentUser.value.id},receiver_id.is.null),and(sender_id.is.null,receiver_id.eq.${currentUser.value.id})`)
         } else {
             query = query.or(`and(sender_id.eq.${currentUser.value.id},receiver_id.eq.${receiverId.value}),and(sender_id.eq.${receiverId.value},receiver_id.eq.${currentUser.value.id})`)
         }
-
         const { data, error } = await query
         if (error) throw error
-
         messages.value = data
         await markMessagesAsRead()
         scrollToBottom()
-    } catch (e) {
-        console.error('메시지 로드 실패:', e)
-    } finally {
-        loadingMessages.value = false
-    }
+    } catch (e) { console.error('메시지 로드 실패:', e) } finally { loadingMessages.value = false }
 }
 
 const markMessagesAsRead = async () => {
     if (!currentUser.value) return
     let query = supabase.from('messages').update({ is_read: true }).eq('receiver_id', currentUser.value.id).eq('is_read', false)
-    
-    if (receiverId.value === 'deleted') {
-        query = query.is('sender_id', null)
-    } else {
-        query = query.eq('sender_id', receiverId.value)
-    }
+    if (receiverId.value === 'deleted') query = query.is('sender_id', null)
+    else query = query.eq('sender_id', receiverId.value)
     await query
 }
 
 const subscribeToMessages = () => {
     if (!currentUser.value) return
-
-    const channelName = (receiverId.value === 'deleted')
-        ? `chat_deleted_${currentUser.value.id}`
-        : `chat_${[currentUser.value.id, receiverId.value].sort().join('_')}`
+    const channelName = (receiverId.value === 'deleted') ? `chat_deleted_${currentUser.value.id}` : `chat_${[currentUser.value.id, receiverId.value].sort().join('_')}`
+    if (subscription) { subscription.unsubscribe(); subscription = null }
     
-    if (subscription) {
-        subscription.unsubscribe()
-        subscription = null
-    }
-    
-    subscription = supabase
-        .channel(channelName) 
+    subscription = supabase.channel(channelName) 
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
              const newMsg = payload.new
              const myId = currentUser.value.id
-             
              let isRelevant = false
              if (receiverId.value === 'deleted') {
-                 isRelevant = (newMsg.sender_id === myId && newMsg.receiver_id === null) ||
-                              (newMsg.sender_id === null && newMsg.receiver_id === myId)
+                 isRelevant = (newMsg.sender_id === myId && newMsg.receiver_id === null) || (newMsg.sender_id === null && newMsg.receiver_id === myId)
              } else {
-                 isRelevant = (newMsg.sender_id === myId && newMsg.receiver_id === receiverId.value) ||
-                              (newMsg.sender_id === receiverId.value && newMsg.receiver_id === myId)
+                 isRelevant = (newMsg.sender_id === myId && newMsg.receiver_id === receiverId.value) || (newMsg.sender_id === receiverId.value && newMsg.receiver_id === myId)
              }
-
              if (isRelevant) {
-                 // 중복 방지 로직
                  if (!messages.value.find(m => m.id === newMsg.id)) {
                      messages.value.push(newMsg)
-                     if (newMsg.sender_id !== myId) {
-                         markMessagesAsRead()
-                     }
+                     if (newMsg.sender_id !== myId) markMessagesAsRead()
                      scrollToBottom()
                  }
              }
@@ -283,22 +387,11 @@ const subscribeToMessages = () => {
 const sendMessage = async () => {
     if (!newMessage.value.trim() || !currentUser.value) return
     if (isDeletedUser.value) return
-
     const content = newMessage.value.trim()
     newMessage.value = ''
-
-    const message = {
-        content: content,
-        sender_id: currentUser.value.id,
-        receiver_id: receiverId.value,
-        is_read: false
-    }
-
+    const message = { content: content, sender_id: currentUser.value.id, receiver_id: receiverId.value, is_read: false }
     const { data, error } = await supabase.from('messages').insert(message).select().single()
-
-    if (error) {
-        alert('전송 실패')
-    } else if (data) {
+    if (error) { alert('전송 실패') } else if (data) {
         await saveChatSettings({ is_hidden: false })
         if (!messages.value.find(m => m.id === data.id)) {
             messages.value.push(data)
@@ -318,87 +411,48 @@ const scrollToBottom = () => {
 const goBack = () => router.back()
 const openMenu = () => { showMenuModal.value = true }
 const closeMenu = () => { showMenuModal.value = false }
-
 const changeRoomName = async () => {
   const newName = prompt('변경할 채팅방 이름을 입력하세요:', customRoomName.value || receiverName.value)
-  if (newName) {
-    customRoomName.value = newName
-    await saveChatSettings({ custom_name: newName })
-  }
+  if (newName) { customRoomName.value = newName; await saveChatSettings({ custom_name: newName }) }
 }
-
 const toggleNotification = async () => {
   isNotificationMuted.value = !isNotificationMuted.value
   await saveChatSettings({ is_muted: isNotificationMuted.value })
 }
-
 const leaveChatRoom = async () => {
   if (!confirm('채팅방을 나가시겠습니까?')) return
-
   try {
-    // Case 1: 탈퇴한 유저와의 채팅 -> 영구 삭제
     if (isDeletedUser.value) {
         const messageIds = messages.value.map(m => m.id)
         if (messageIds.length > 0) {
-            const { error } = await supabase
-                .from('messages')
-                .delete()
-                .in('id', messageIds)
+            const { error } = await supabase.from('messages').delete().in('id', messageIds)
             if (error) throw error
         }
-    } 
-    // Case 2: 일반 유저 -> 시스템 메시지 및 숨김
-    else {
-        await supabase.from('messages').insert({
-            content: '::SYSTEM_LEAVE::',
-            sender_id: currentUser.value.id,
-            receiver_id: receiverId.value,
-            is_read: false
-        })
+    } else {
+        await supabase.from('messages').insert({ content: '::SYSTEM_LEAVE::', sender_id: currentUser.value.id, receiver_id: receiverId.value, is_read: false })
         await saveChatSettings({ is_hidden: true })
     }
-    
     router.replace('/notification')
-
-  } catch (e) {
-    console.error('채팅방 나가기 실패:', e)
-    alert('오류가 발생했습니다.')
-  }
+  } catch (e) { console.error('채팅방 나가기 실패:', e); alert('오류가 발생했습니다.') }
 }
-
-const goToProfile = () => {
-  if (receiverId.value && !isDeletedUser.value) router.push(`/profile/${receiverId.value}`)
-}
-const formatTime = (timestamp) => {
-    return new Date(timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
-}
+const goToProfile = () => { if (receiverId.value && !isDeletedUser.value) router.push(`/profile/${receiverId.value}`) }
+const formatTime = (timestamp) => new Date(timestamp).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
 
 const initializeChatRoom = async () => {
     loadingMessages.value = true
     await loadUserInfo()
-    if (currentUser.value) {
-        await loadMessages()
-        subscribeToMessages()
-    }
+    if (currentUser.value) { await loadMessages(); subscribeToMessages() }
 }
-
-watch(() => route.params.id, (newId) => {
-    receiverId.value = newId
-    initializeChatRoom()
-})
-
+watch(() => route.params.id, (newId) => { receiverId.value = newId; initializeChatRoom() })
 onMounted(initializeChatRoom)
-
-onBeforeUnmount(() => {
-    if (subscription) subscription.unsubscribe()
-})
+onBeforeUnmount(() => { if (subscription) subscription.unsubscribe() })
 </script>
 
 <style scoped>
-/* 스타일은 변경 없음 */
 .chat-room-container { display: flex; flex-direction: column; height: 100vh; max-width: 600px; margin: 0 auto; background-color: #f7f7f7; overflow: hidden; }
 .header { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: #568265; color: white; box-shadow: 0 1px 4px rgba(0,0,0,0.1); flex-shrink: 0; z-index: 10; }
 .chat-info { display: flex; align-items: center; gap: 4px; cursor: pointer; justify-content: center; flex: 1; }
+/* 헤더 프로필 이미지 제거, 스타일만 유지 */
 .receiver-name { font-size: 18px; font-weight: 600; color: white; margin: 0; }
 .back-btn, .menu-btn { background: none; border: none; cursor: pointer; padding: 4px; display: flex; align-items: center; justify-content: center; }
 
@@ -425,23 +479,136 @@ onBeforeUnmount(() => {
 .my-message .message-bubble { background-color: #568265; color: white; border-top-right-radius: 2px; }
 .other-message .message-bubble { background-color: white; color: #333; border: 1px solid #eee; border-top-left-radius: 2px; }
 
+/* 미디어 메시지 스타일 */
+.media-message img, .media-message video {
+  max-width: 100%;
+  max-height: 300px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  cursor: pointer;
+}
+
+/* 파일 메시지 스타일 */
+.file-message a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: white;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+  text-decoration: none;
+  color: #333;
+}
+.file-icon { font-size: 20px; }
+.file-text { font-size: 14px; font-weight: 500; }
+
 .message-meta { display: flex; flex-direction: column; justify-content: flex-end; min-width: fit-content; }
 .my-meta { align-items: flex-end; text-align: right; }
 .other-meta { align-items: flex-start; }
 
 .message-time { font-size: 11px; color: #999; white-space: nowrap; }
-.unread-text { font-size: 10px; color: #568265; font-weight: bold; margin-bottom: 2px; }
+.unread-mark { font-size: 10px; color: #f39c12; font-weight: bold; margin-bottom: 2px; white-space: nowrap; }
 
 .system-message { text-align: center; margin: 10px 0; font-size: 12px; color: #666; background: rgba(0,0,0,0.05); padding: 4px 10px; border-radius: 10px; align-self: center; }
 .system-message p { margin: 0; }
-
 .bottom-spacer { height: 20px; }
 
-.chat-input-area { display: flex; padding: 10px 12px; background-color: #fff; border-top: 1px solid #eee; flex-shrink: 0; gap: 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -2px 10px rgba(0,0,0,0.03); }
+/* 입력창 & 하단 메뉴 영역 */
+.bottom-container {
+  background-color: #fff;
+  border-top: 1px solid #eee;
+  flex-shrink: 0;
+  box-shadow: 0 -2px 10px rgba(0,0,0,0.03);
+}
+
+.chat-input-area { 
+  display: flex; 
+  padding: 10px 12px; 
+  gap: 10px; 
+  align-items: center;
+  /* 하단에 메뉴가 열리면 패딩을 줄임 */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom)); 
+}
+
 .chat-input-area input { flex-grow: 1; padding: 10px 14px; border: 1px solid #e0e0e0; border-radius: 24px; font-size: 15px; outline: none; background: #f9f9f9; transition: border-color 0.2s; }
 .chat-input-area input:focus { border-color: #568265; background: white; }
-.chat-input-area button { padding: 0 20px; background-color: #568265; color: white; border: none; border-radius: 24px; font-weight: 600; cursor: pointer; transition: background-color 0.2s; font-size: 14px; white-space: nowrap; }
+.chat-input-area button.send-btn { padding: 0 20px; background-color: #568265; color: white; border: none; border-radius: 24px; font-weight: 600; cursor: pointer; transition: background-color 0.2s; font-size: 14px; white-space: nowrap; height: 42px; }
 .chat-input-area button:disabled { background-color: #e0e0e0; color: #999; cursor: not-allowed; }
+
+/* 플러스 버튼 스타일 */
+.plus-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background-color: #568265; /* 초록색 배경 */
+  color: white; /* 흰색 아이콘 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+.plus-btn.active {
+  transform: rotate(45deg); /* 메뉴 열리면 X자로 회전 */
+  background-color: #4a7058;
+}
+.plus-btn:hover {
+  opacity: 0.9;
+}
+
+/* 첨부파일 메뉴 Drawer */
+.attachment-menu {
+  display: flex;
+  gap: 30px;
+  padding: 20px 30px 40px; /* 하단 여백 넉넉히 */
+  background: white;
+  border-top: 1px solid #f0f0f0;
+  animation: slideUp 0.2s ease-out;
+}
+
+.attach-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.icon-wrapper {
+  width: 56px;
+  height: 56px;
+  border-radius: 20px;
+  background-color: #fff;
+  border: 1px solid #eee;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+  transition: transform 0.2s;
+}
+.icon-wrapper img {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+.attach-item:hover .icon-wrapper {
+  transform: translateY(-3px);
+  background-color: #f8f9fa;
+}
+.attach-item span {
+  font-size: 12px;
+  color: #666;
+}
+
+@keyframes slideUp {
+  from { transform: translateY(20px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
 
 .loading-state, .empty-state { text-align: center; padding: 60px 20px; color: #999; }
 .empty-icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
@@ -457,6 +624,10 @@ onBeforeUnmount(() => {
 .menu-item.danger:hover { background: #ffecec; }
 .menu-item .icon { font-size: 18px; }
 .close-menu-btn { width: 100%; padding: 12px; margin-top: 8px; background: #568265; color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; }
+
+.image-zoom-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.9); z-index: 2000; display: flex; align-items: center; justify-content: center; }
+.zoomed-image { max-width: 90%; max-height: 90%; object-fit: contain; }
+.close-zoom { position: absolute; top: 20px; right: 20px; background: none; border: none; color: white; font-size: 30px; cursor: pointer; }
 
 @media (max-width: 480px) { .chat-room-container { max-width: 100%; } }
 </style>
