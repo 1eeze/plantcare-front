@@ -72,6 +72,17 @@
             <div v-if="post.status" class="status-badge" :class="post.status">
               {{ getStatusText(post.status) }}
             </div>
+
+            <!-- ✨ 등급 배지 추가 (NEW!) -->
+            <div v-if="post.analyzingQuality" class="quality-badge analyzing">
+              <span class="analyzing-spinner"></span>
+              <span class="grade-text">분석중...</span>
+            </div>
+            <div v-else-if="post.quality_grade" class="quality-badge" :class="'grade-' + post.quality_grade.toLowerCase()">
+              <span class="grade-icon">🏆</span>
+              <span class="grade-text">{{ post.quality_grade }}등급</span>
+            </div>
+
             <!-- 즐겨찾기 버튼 -->
             <button @click="toggleBookmark(post)" class="bookmark-btn" :class="{ bookmarked: post.bookmarked }">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
@@ -93,8 +104,23 @@
         <p class="date">{{ formatDate(post.created_at || post.date) }}</p>
 
         <!-- 본문 -->
-        <div class="post-content" role="button" tabindex="0" @click="goToPost(post.id)" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
-          <p class="post-description">{{ truncateText(post.text, 80) }}</p>
+        <div class="post-content">
+          <p class="post-description">{{ post.text }}</p>
+          
+          <!-- ✨ 등급 상세 정보 (NEW!) -->
+          <div v-if="post.quality_grade" class="quality-detail">
+            <div class="quality-info-row">
+              <span class="quality-label">품질 등급</span>
+              <span class="quality-value" :style="{ color: getGradeColor(post.quality_grade) }">
+                {{ getGradeLabel(post.quality_grade) }}
+              </span>
+            </div>
+            <div v-if="post.quality_confidence" class="quality-info-row">
+              <span class="quality-label">신뢰도</span>
+              <span class="quality-value">{{ (post.quality_confidence * 100).toFixed(1) }}%</span>
+            </div>
+          </div>
+
           <div v-if="post.sensorStatus !== null" class="sensor-summary">
             <div class="sensor-chip">
               <span class="chip-label">🌡 온도</span>
@@ -120,7 +146,7 @@
 
         <!-- 프로필 + 상호작용 -->
         <div class="post-footer">
-          <div class="profile-info" @click="goToProfile(post.userId || post.user_id, post.name)">
+          <div class="profile-info" @click="goToProfile(post.userId || post.user_id)">
             <div class="profile-wrapper">
               <div class="profile" :style="{ backgroundImage: `url(${post.profile})` }"></div>
               <div class="verification-badge" v-if="post.verified">✓</div>
@@ -185,7 +211,8 @@
       :visible="showComment"
       :postId="selectedPostId"
       @close="showComment = false"
-      @comment-added="onCommentAdded"      @comment-deleted="onCommentDeleted"  />
+      @comment-added="onCommentAdded"
+      @comment-deleted="onCommentDeleted" />
 
   <!-- 채팅 팝업 -->
   <ChatPopup
@@ -230,13 +257,17 @@ export default {
       filters: [
         { key: 'all', label: '전체' },
         { key: 'available', label: '판매중' },
+        { key: 'premium', label: '프리미엄 (S등급)' }, // ✨ 등급 필터 추가
         { key: 'popular', label: '인기' },
         { key: 'recent', label: '최신' },
         { key: 'nearby', label: '내 근처' }
       ],
       
       posts: [],
-      realtimeChannel: null // 실시간 채널 변수 추가
+      realtimeChannel: null,
+      
+      // ✨ 등급 분석 API URL
+      QUALITY_API_URL: 'https://detectbug-740384497388.asia-southeast1.run.app/predict/quality'
     }
   },
 
@@ -255,6 +286,9 @@ export default {
 
       if (this.activeFilter === 'available') {
         filtered = filtered.filter(post => post.status === 'available')
+      } else if (this.activeFilter === 'premium') {
+        // ✨ S등급 필터링
+        filtered = filtered.filter(post => post.quality_grade === 'S')
       } else if (this.activeFilter === 'popular') {
         filtered = [...filtered].sort((a, b) => b.likes - a.likes)
       } else if (this.activeFilter === 'recent') {
@@ -268,34 +302,23 @@ export default {
   watch: {
     showComment(val) {
       this.$emit('comment-visibility', val)
-    },
-    '$route.query.q'(newQuery, oldQuery) {
-      if (newQuery === oldQuery) return
-      this.applyQuerySearch()
     }
   },
 
   async mounted() {
-    // 1. 유저 정보 먼저 확인
     const { data: { user } } = await supabase.auth.getUser()
     this.currentUser = user
     
-    // 2. 게시글 로드
     await this.fetchPosts()
-    this.applyQuerySearch()
-    
-    // 3. 실시간 구독 시작
     this.setupRealtime()
   },
 
   beforeUnmount() {
-    // 컴포넌트 해제 시 구독 취소
     if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel)
   },
 
   methods: {
     setupRealtime() {
-      // 기존 채널이 있다면 제거
       if (this.realtimeChannel) supabase.removeChannel(this.realtimeChannel)
 
       this.realtimeChannel = supabase
@@ -304,33 +327,27 @@ export default {
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'posts' },
           (payload) => {
-            console.log('📢 실시간 업데이트 수신:', payload) // [디버깅용] 콘솔 확인
-
             const updatedPost = payload.new
-            // 화면에 있는 게시글 중 업데이트된 글 찾기
             const targetIndex = this.posts.findIndex(p => p.id === updatedPost.id)
             
             if (targetIndex !== -1) {
               const currentPost = this.posts[targetIndex]
               
               this.posts[targetIndex] = {
-                ...currentPost, // 기존 데이터(작성자, 내 좋아요 여부 등) 유지
-                likes: updatedPost.likes,       // 좋아요 수 업데이트
-                comments: updatedPost.comments, // 댓글 수 업데이트
-                views: updatedPost.views        // 조회수 업데이트
+                ...currentPost,
+                likes: updatedPost.likes,
+                comments: updatedPost.comments,
+                views: updatedPost.views
               }
             }
           }
         )
-        .subscribe((status) => {
-          console.log('📡 Realtime 상태:', status)
-        })
+        .subscribe()
     },
 
     async fetchPosts() {
       this.loading = true
       try {
-        // 1. 게시글 전체 가져오기
         const { data: postsData, error } = await supabase
           .from('posts')
           .select('*')
@@ -338,7 +355,6 @@ export default {
 
         if (error) throw error
 
-        // 2. 내가 누른 좋아요/북마크 목록 별도로 가져오기
         let myLikedIds = new Set()
         let myBookmarkedIds = new Set()
 
@@ -357,21 +373,36 @@ export default {
           if (bookmarks) bookmarks.forEach(b => myBookmarkedIds.add(b.post_id))
         }
 
-        // 3. 데이터 병합
-      const enriched = postsData.map(post => ({
+        // 기본 데이터 먼저 매핑
+        this.posts = postsData.map(post => ({
           ...post,
           date: this.formatDate(post.created_at),
           liked: myLikedIds.has(post.id),
           bookmarked: myBookmarkedIds.has(post.id),
-          // DB 값 그대로 사용 (없으면 0)
           likes: post.likes || 0,
           comments: post.comments || 0,
           views: post.views || 0,
-          sensorStatus: { humidity: null, temp: null, light: null },
-          sensorQuality: '-'
+          // 등급 분석 전 기본값
+          quality_grade: null,
+          quality_confidence: null,
+          analyzingQuality: false
         }))
-        this.posts = enriched
-        await this.attachSensorStatus(enriched)
+
+        // ✨ 각 게시글의 이미지로 등급 분석 (백그라운드에서 진행)
+        this.posts.forEach(async (post) => {
+          if (post.image) {
+            post.analyzingQuality = true
+            try {
+              const qualityResult = await this.analyzeQualityFromURL(post.image)
+              post.quality_grade = qualityResult.grade
+              post.quality_confidence = qualityResult.confidence
+            } catch (e) {
+              console.error(`등급 분석 실패 (게시글 ${post.id}):`, e)
+            } finally {
+              post.analyzingQuality = false
+            }
+          }
+        })
 
       } catch (e) {
         console.error('게시글 로드 실패:', e)
@@ -380,25 +411,62 @@ export default {
       }
     },
 
+    // ✨ 이미지 URL로 등급 분석하는 함수
+    async analyzeQualityFromURL(imageUrl) {
+      try {
+        console.log('🏆 등급 분석 시작:', imageUrl)
+
+        // 1. 이미지 URL을 Blob으로 가져오기
+        const response = await fetch(imageUrl)
+        if (!response.ok) throw new Error('이미지 로드 실패')
+        
+        const blob = await response.blob()
+        const file = new File([blob], 'plant.jpg', { type: blob.type })
+
+        // 2. FormData로 API 호출
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const apiResponse = await fetch(this.QUALITY_API_URL, {
+          method: 'POST',
+          body: formData
+        })
+
+        if (!apiResponse.ok) throw new Error(`API 오류: ${apiResponse.status}`)
+
+        const data = await apiResponse.json()
+        console.log('🏆 등급 분석 결과:', data)
+
+        if (data.predictions && Array.isArray(data.predictions) && data.predictions.length > 0) {
+          const prediction = data.predictions[0]
+          return {
+            grade: prediction.grade,
+            confidence: prediction.confidence
+          }
+        }
+
+        return { grade: null, confidence: null }
+
+      } catch (err) {
+        console.error('💥 등급 분석 실패:', err)
+        return { grade: null, confidence: null }
+      }
+    },
+
     async toggleLike(post) {
       if (!this.currentUser) return alert('로그인이 필요합니다.')
 
-      // 화면 먼저 갱신 (Optimistic Update)
       const previousLiked = post.liked
       post.liked = !post.liked
-      // 숫자는 Realtime이 처리해주지만, 반응성을 위해 임시로 변경
       post.likes += post.liked ? 1 : -1
 
       try {
         if (previousLiked) {
-            // 취소
             await supabase.from('likes').delete().eq('user_id', this.currentUser.id).eq('post_id', post.id)
         } else {
-            // 추가
             await supabase.from('likes').insert({ user_id: this.currentUser.id, post_id: post.id })
         }
       } catch (e) {
-        // 실패 시 롤백
         post.liked = previousLiked
         post.likes += post.liked ? 1 : -1
         console.error('좋아요 오류:', e)
@@ -424,12 +492,30 @@ export default {
       }
     },
 
-    // 이벤트 핸들러: 내 화면에서 직접 댓글 달았을 때 즉각 반응용
+    // ✨ 등급 관련 헬퍼 함수들 (NEW!)
+    getGradeColor(grade) {
+      const colors = {
+        'S': '#ffd700',
+        'A': '#c0c0c0',
+        'B': '#cd7f32'
+      }
+      return colors[grade] || '#95a5a6'
+    },
+
+    getGradeLabel(grade) {
+      const labels = {
+        'S': 'S등급 (특상)',
+        'A': 'A등급 (상)',
+        'B': 'B등급 (중)'
+      }
+      return labels[grade] || '등급 미분류'
+    },
+
     onCommentAdded(postId) {
-      // Realtime이 오기 전에 UI 반응성 향상을 위해
       const post = this.posts.find(p => p.id === postId)
       if (post) post.comments++
     },
+    
     onCommentDeleted(postId) {
       const post = this.posts.find(p => p.id === postId)
       if (post && post.comments > 0) post.comments--
@@ -626,62 +712,33 @@ export default {
       }
     },
 
-    async buyNow(post) {
-      if (!this.currentUser) {
-        alert('로그인이 필요합니다.')
-        return
-      }
-
-      // 자기 자신의 게시글인지 확인
-      if (post.user_id === this.currentUser.id) {
-        alert('본인의 게시글입니다.')
-        return
-      }
-
+    buyNow(post) { 
       console.log('바로구매:', post.title)
-
-      try {
-        // 구매자 정보 조회
-        const { data: buyerData } = await supabase
-          .from('Users')
-          .select('name')
-          .eq('id', this.currentUser.id)
-          .single()
-
-        const buyerName = buyerData?.name || '사용자'
-
-        // 판매자에게 알림 전송
-        const { error: notifError } = await supabase
-          .from('notifications')
-          .insert({
-            user_id: post.user_id,
-            type: 'trade',
-            title: '구매 요청',
-            message: `${buyerName}님이 "${post.title}" 구매를 요청했습니다`,
-            read: false,
-            metadata: {
-              price: post.price,
-              plantName: post.title
-            },
-            related_post_id: post.id,
-            related_user_id: this.currentUser.id
-          })
-
-        if (notifError) {
-          console.warn('알림 전송 실패:', notifError)
-        }
-
-        alert(`${post.title} 구매를 진행합니다.\n판매자에게 알림이 전송되었습니다.`)
-      } catch (e) {
-        console.error('바로구매 처리 중 오류:', e)
-        alert(`${post.title} 구매를 진행합니다.`)
-      }
+      alert(`${post.title} 구매를 진행합니다.`) 
     },
-    getStatusText(status) { const statusMap = { 'available': '판매중', 'reserved': '예약중', 'sold': '판매완료' }; return statusMap[status] || '판매중' },
-    formatPrice(value) { return new Intl.NumberFormat('ko-KR').format(value) + '원' },
+    
+    getStatusText(status) { 
+      const statusMap = { 
+        'available': '판매중', 
+        'reserved': '예약중', 
+        'sold': '판매완료' 
+      }
+      return statusMap[status] || '판매중' 
+    },
+    
+    formatPrice(value) { 
+      return new Intl.NumberFormat('ko-KR').format(value) + '원' 
+    },
+    
     formatDate(dateString) {
       if (!dateString) return ''
-      try { const date = new Date(dateString); if (isNaN(date.getTime())) return dateString; return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) } catch { return dateString }
+      try { 
+        const date = new Date(dateString)
+        if (isNaN(date.getTime())) return dateString
+        return date.toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' }) 
+      } catch { 
+        return dateString 
+      }
     }
   }
 }
@@ -876,6 +933,96 @@ export default {
   color: white;
 }
 
+/* ✨ 등급 배지 스타일 (NEW!) */
+.quality-badge {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.quality-badge.analyzing {
+  background: rgba(149, 165, 166, 0.95);
+  color: white;
+}
+
+.analyzing-spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.quality-badge.grade-s {
+  background: linear-gradient(135deg, rgba(255, 215, 0, 0.95), rgba(255, 193, 7, 0.95));
+  color: #333;
+}
+
+.quality-badge.grade-a {
+  background: linear-gradient(135deg, rgba(192, 192, 192, 0.95), rgba(169, 169, 169, 0.95));
+  color: white;
+}
+
+.quality-badge.grade-b {
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.95), rgba(184, 115, 51, 0.95));
+  color: white;
+}
+
+.grade-icon {
+  font-size: 14px;
+}
+
+.grade-text {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+}
+
+/* ✨ 등급 상세 정보 스타일 (NEW!) */
+.quality-detail {
+  background: #f8f9fa;
+  border-radius: 8px;
+  padding: 12px;
+  margin: 12px 0;
+  border-left: 3px solid #ffd700;
+}
+
+.quality-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.quality-info-row:last-child {
+  margin-bottom: 0;
+}
+
+.quality-label {
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.quality-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
 .bookmark-btn {
   position: absolute;
   top: 10px;
@@ -924,7 +1071,6 @@ export default {
 
 .post-content {
   padding: 0 15px 15px;
-  cursor: pointer;
 }
 
 .post-description {
