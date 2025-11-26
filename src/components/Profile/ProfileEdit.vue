@@ -206,6 +206,8 @@ const allLocations = [
 ]
 const filteredLocations = ref([...allLocations])
 
+const currentMessage = ref({})
+
 const form = reactive({
   nickname: '',
   titleId: 1,
@@ -215,6 +217,8 @@ const form = reactive({
   privacy_bookmarks: 'private',
   privacy_reports: 'public'
 })
+const privacySupported = ref(true)
+
 const originalForm = reactive({
   nickname: '',
   titleId: 1,
@@ -231,9 +235,11 @@ const hasChanges = computed(() => {
   const avatarChanged = avatarFile.value !== null || (previewImage.value === null && originalForm.avatar_url !== null)
   return form.nickname !== originalForm.nickname || form.titleId !== originalForm.titleId ||
          form.bio !== originalForm.bio || form.location !== originalForm.location || avatarChanged ||
-         form.privacy_plants !== originalForm.privacy_plants ||
-         form.privacy_bookmarks !== originalForm.privacy_bookmarks ||
-         form.privacy_reports !== originalForm.privacy_reports
+         (privacySupported.value && (
+           form.privacy_plants !== originalForm.privacy_plants ||
+           form.privacy_bookmarks !== originalForm.privacy_bookmarks ||
+           form.privacy_reports !== originalForm.privacy_reports
+         ))
 })
 
 const avatarStyle = computed(() => previewImage.value ? { backgroundImage: `url(${previewImage.value})`, backgroundSize: 'cover' } : {})
@@ -242,21 +248,41 @@ const loadProfile = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return router.push('/login')
 
-  const { data } = await supabase
+  let data = null
+  if (privacySupported.value) {
+    try {
+      const { data: withPrivacy } = await supabase
+        .from('Users')
+        .select('name, avatar_url, message')
+        .eq('id', user.id)
+        .single()
+      data = withPrivacy
+    } catch (err) {
+      console.warn('Users 조회(privacy 포함) 실패, fallback to base columns:', err?.message)
+      privacySupported.value = false
+    }
+  }
+
+  if (!data) {
+  const { data: fallback } = await supabase
     .from('Users')
-    .select('name, avatar_url, bio, location, titleId, privacy_plants, privacy_bookmarks, privacy_reports')
+    .select('name, avatar_url, message')
     .eq('id', user.id)
     .single()
+  data = fallback
+  }
 
   if (data) {
+    const profileMeta = data.message?.profileMeta || {}
+    currentMessage.value = data.message || {}
     Object.assign(form, {
       nickname: data.name || '',
-      bio: data.bio || '',
-      location: data.location || '',
-      titleId: data.titleId || 1,
-      privacy_plants: data.privacy_plants || 'public',
-      privacy_bookmarks: data.privacy_bookmarks || 'private',
-      privacy_reports: data.privacy_reports || 'public'
+      bio: profileMeta.bio || '',
+      location: profileMeta.location || '',
+      titleId: profileMeta.titleId || 1,
+      privacy_plants: profileMeta.privacy_plants || 'public',
+      privacy_bookmarks: profileMeta.privacy_bookmarks || 'private',
+      privacy_reports: profileMeta.privacy_reports || 'public'
     })
     Object.assign(originalForm, { ...form, avatar_url: data.avatar_url })
     if (data.avatar_url) previewImage.value = data.avatar_url
@@ -296,16 +322,20 @@ const saveProfile = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     
-    const updates = {
-      id: user.id,
-      email: user.email,
-      name: form.nickname,
+    const profileMeta = {
       bio: form.bio,
       location: form.location,
       titleId: form.titleId,
       privacy_plants: form.privacy_plants,
       privacy_bookmarks: form.privacy_bookmarks,
-      privacy_reports: form.privacy_reports,
+      privacy_reports: form.privacy_reports
+    }
+
+    const updates = {
+      id: user.id,
+      email: user.email,
+      name: form.nickname,
+      message: { ...currentMessage.value, profileMeta },
       updated_at: new Date()
     }
 

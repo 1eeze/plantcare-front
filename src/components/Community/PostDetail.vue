@@ -5,6 +5,9 @@
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18L9 12L15 6"/></svg>
       </button>
       <div class="header-actions">
+        <button class="icon-report-btn" @click="showReportModal = true" aria-label="신고하기">
+          🚩
+        </button>
         <template v-if="isOwner">
           <button @click="editPost" class="action-text-btn">수정</button>
           <button @click="deletePost" class="action-text-btn delete">삭제</button>
@@ -63,13 +66,27 @@
       @comment-added="onCommentAdded"
       @comment-deleted="onCommentDeleted"
     />
+
+    <div v-if="showReportModal" class="report-overlay">
+      <div class="report-modal">
+        <h3>신고하기</h3>
+        <p class="report-hint">신고 사유를 입력해주세요.</p>
+        <textarea v-model="reportMessage" rows="4" placeholder="예: 스팸/허위 정보 같습니다." />
+        <div class="report-actions">
+          <button class="btn-secondary" @click="closeReport">취소</button>
+          <button class="btn-primary" @click="submitReport">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showToast" class="toast">신고가 접수되었습니다</div>
   </div>
   
   <div v-else class="loading">불러오는 중...</div>
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import Comment from './Comment.vue'
@@ -85,6 +102,10 @@ const isLiked = ref(false)
 const isBookmarked = ref(false)
 const likeCount = ref(0)
 const showCommentModal = ref(false)
+const showReportModal = ref(false)
+const reportMessage = ref('')
+const showToast = ref(false)
+let toastTimer = null
 
 const isOwner = computed(() => currentUser.value && post.value && currentUser.value.id === post.value.user_id)
 
@@ -192,12 +213,32 @@ const deletePost = async () => {
 }
 
 const goToProfile = () => {
-  router.push(`/profile/${post.value.user_id}`)
+  const target = post.value?.user_id || post.value?.name
+  if (!target) return alert('사용자 정보를 찾을 수 없습니다.')
+  router.push(`/profile/${target}`)
 }
 
 const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'
 const formatDate = (d) => new Date(d).toLocaleDateString()
 const getStatusText = (s) => ({ available: '판매중', sold: '판매완료', reserved: '예약중' }[s] || s)
+
+const closeReport = () => {
+  showReportModal.value = false
+  reportMessage.value = ''
+}
+
+const submitReport = () => {
+  closeReport()
+  showToast.value = true
+  if (toastTimer) clearTimeout(toastTimer)
+  toastTimer = setTimeout(() => {
+    showToast.value = false
+  }, 2000)
+}
+
+onUnmounted(() => {
+  if (toastTimer) clearTimeout(toastTimer)
+})
 
 onMounted(fetchPost)
 </script>
@@ -206,6 +247,7 @@ onMounted(fetchPost)
 .post-detail-container { padding-bottom: 80px; background: white; min-height: 100vh; }
 .detail-header { display: flex; justify-content: space-between; padding: 16px; position: sticky; top: 0; background: white; z-index: 10; }
 .back-btn { background: none; border: none; cursor: pointer; }
+.icon-report-btn { background: none; border: none; font-size: 18px; cursor: pointer; margin-right: 8px; }
 .action-text-btn { background: none; border: none; font-size: 14px; color: #666; margin-left: 10px; cursor: pointer; }
 .action-text-btn.delete { color: #e74c3c; }
 
@@ -249,4 +291,14 @@ onMounted(fetchPost)
 .icon-btn.active { color: #e74c3c; }
 .icon-btn.bookmark.active { color: #f39c12; }
 .loading { text-align: center; padding: 50px; color: #999; }
+
+.report-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); display: flex; align-items: center; justify-content: center; z-index: 3000; padding: 16px; }
+.report-modal { background: #fff; width: 100%; max-width: 360px; border-radius: 12px; padding: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); }
+.report-modal h3 { margin: 0 0 8px; font-size: 18px; }
+.report-hint { margin: 0 0 12px; color: #777; font-size: 13px; }
+.report-modal textarea { width: 100%; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; font-size: 14px; resize: vertical; min-height: 100px; box-sizing: border-box; }
+.report-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.btn-secondary { background: #f1f1f1; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; color: #555; }
+.btn-primary { background: #568265; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+.toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 3500; }
 </style>

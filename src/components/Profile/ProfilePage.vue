@@ -16,6 +16,7 @@
     </div>
 
     <div class="profile-header">
+      <button class="profile-report-btn" @click="openProfileReport">신고하기</button>
       <div class="profile-image-wrapper">
         <img class="profile-img" :src="profileImage" alt="프로필 이미지" />
         <div v-if="userProfile.verified" class="verified-badge" title="인증된 사용자">✓</div>
@@ -220,11 +221,25 @@
         <button @click="showFollowModal = false" class="modal-btn">닫기</button>
       </div>
     </div>
+
+    <div v-if="showProfileReportModal" class="modal-overlay" @click="closeProfileReport">
+      <div class="modal-content report-modal" @click.stop>
+        <h3>신고하기</h3>
+        <p class="report-hint">해당 사용자를 신고하는 이유를 적어주세요.</p>
+        <textarea v-model="profileReportMessage" rows="4" placeholder="예: 스팸/허위 정보 같습니다." />
+        <div class="report-actions">
+          <button class="btn-secondary" @click="closeProfileReport">취소</button>
+          <button class="btn-primary" @click="submitProfileReport">확인</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="showReportToast" class="toast">신고가 접수되었습니다</div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { supabase } from '@/utils/supabase.js'
 import profileImageUrl from '../../assets/user-profile.png'
@@ -258,6 +273,10 @@ const nickname = ref('')
 const activeTab = ref('selling')
 const isFollowing = ref(false)
 const currentUserId = ref(null)
+const showProfileReportModal = ref(false)
+const profileReportMessage = ref('')
+const showReportToast = ref(false)
+let reportToastTimer = null
 
 // 팔로우 모달
 const showFollowModal = ref(false)
@@ -339,36 +358,104 @@ const getLatestSensorValue = (jsonbArray) => {
   return jsonbArray[0]?.value ?? null
 }
 
+const privacySupported = ref(true)
+
+const resetViewState = () => {
+  nickname.value = ''
+  profileImage.value = profileImageUrl
+  userProfile.value.bio = ''
+  userProfile.value.location = ''
+  userProfile.value.level = '새싹 초보 🌱'
+  userProfile.value.privacy_plants = 'public'
+  userProfile.value.privacy_bookmarks = 'private'
+  userProfile.value.privacy_reports = 'public'
+  sellingPosts.value = []
+  myPlants.value = []
+  bookmarkedPosts.value = []
+  analysisReports.value = []
+  userStats.value = {
+    plantsCount: 0,
+    postsCount: 0,
+    salesCount: 0,
+    followersCount: 0,
+    followingCount: 0
+  }
+}
+
 const loadProfile = async () => {
+  const baseColumns = 'id, name, avatar_url, message'
+  const normalizeTarget = (val) => {
+    const str = decodeURIComponent(String(val ?? '')).trim()
+    return (str === 'undefined' || str === 'null') ? '' : str
+  }
+  const isUuid = (value) => /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(value)
+
+  const fetchById = async (id) => {
+    const { data, error } = await supabase
+      .from('Users')
+      .select(baseColumns)
+      .eq('id', id)
+      .single()
+    if (error) {
+      if (error.code === 'PGRST116') return null
+      throw error
+    }
+    return data
+  }
+
+  const fetchByName = async (name) => {
+    const { data, error } = await supabase
+      .from('Users')
+      .select(baseColumns)
+      .or(`name.eq.${name},name.ilike.%${name}%`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) {
+      if (error.code === 'PGRST116') return null
+      throw error
+    }
+    return data
+  }
+
   try {
+    resetViewState()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return router.push('/login')
     currentUserId.value = user.id
 
-    let targetId = route.params.userId
-    if (!targetId || targetId === 'me') targetId = user.id
+    const rawTarget = normalizeTarget(route.params.userId)
+    let targetUserRow = null
 
-    // 1. 유저 기본 정보
-    const { data, error } = await supabase
-      .from('Users')
-      .select('name, avatar_url, bio, location, titleId, privacy_plants, privacy_bookmarks, privacy_reports')
-      .eq('id', targetId)
-      .single()
-
-    if (error && error.code !== 'PGRST116') throw error
-
-    if (data) {
-      nickname.value = data.name || '알 수 없는 사용자'
-      profileImage.value = data.avatar_url || profileImageUrl
-      userProfile.value.bio = data.bio || ''
-      userProfile.value.location = data.location || ''
-      userProfile.value.privacy_plants = data.privacy_plants || 'public'
-      userProfile.value.privacy_bookmarks = data.privacy_bookmarks || 'private'
-      userProfile.value.privacy_reports = data.privacy_reports || 'public'
-      if (data.titleId) {
-        const t = availableTitles.find(item => item.id === data.titleId)
-        if(t) userProfile.value.level = `${t.name} ${t.emoji}`
+    if (!rawTarget || rawTarget === 'me') {
+      targetUserRow = await fetchById(user.id)
+    } else if (isUuid(rawTarget)) {
+      targetUserRow = await fetchById(rawTarget)
+    } else {
+      targetUserRow = await fetchByName(rawTarget)
+      if (targetUserRow && rawTarget !== targetUserRow.id) {
+        router.replace(`/profile/${targetUserRow.id}`)
       }
+    }
+
+    if (!targetUserRow) {
+      alert('사용자를 찾을 수 없습니다.')
+      return router.back()
+    }
+
+    const targetId = targetUserRow.id
+    const profileMeta = targetUserRow.message?.profileMeta || {}
+
+    nickname.value = targetUserRow.name || '알 수 없는 사용자'
+    profileImage.value = targetUserRow.avatar_url || profileImageUrl
+    userProfile.value.bio = profileMeta.bio || ''
+    userProfile.value.location = profileMeta.location || ''
+    userProfile.value.privacy_plants = profileMeta.privacy_plants || 'public'
+    userProfile.value.privacy_bookmarks = profileMeta.privacy_bookmarks || 'private'
+    userProfile.value.privacy_reports = profileMeta.privacy_reports || 'public'
+    if (profileMeta.titleId) {
+      const t = availableTitles.find(item => item.id === profileMeta.titleId)
+      if(t) userProfile.value.level = `${t.name} ${t.emoji}`
     }
 
     // 2. 판매글 로드
@@ -388,7 +475,7 @@ const loadProfile = async () => {
       userStats.value.salesCount = postsData.filter(p => p.status === 'sold').length
     }
 
-    // 3. 식물 로드 (센서 데이터 포함) - 공개 범위 체크
+    // 3. 식물 로드 (센서 데이터 포함)
     let plantsData = null
     if (targetId === currentUserId.value || userProfile.value.privacy_plants === 'public') {
       const { data } = await supabase
@@ -411,7 +498,6 @@ const loadProfile = async () => {
         const temp = getLatestSensorValue(sensorData?.temp) ?? 22
         const light = getLatestSensorValue(sensorData?.light) ?? 70
 
-        // 건강 상태 판단
         let health = 'excellent'
         if (humidity < 30 || temp < 15 || temp > 30 || light < 40) {
           health = 'poor'
@@ -421,7 +507,6 @@ const loadProfile = async () => {
           health = 'good'
         }
 
-        // 키운 일수 계산
         const createdDate = new Date(p.created_at)
         const today = new Date()
         const daysOwned = Math.floor((today - createdDate) / (1000 * 60 * 60 * 24))
@@ -438,7 +523,7 @@ const loadProfile = async () => {
       userStats.value.plantsCount = myPlants.value.length
     }
 
-    // 4. 북마크 로드 - 공개 범위 체크
+    // 4. 북마크 로드
     if (targetId === currentUserId.value || userProfile.value.privacy_bookmarks === 'public') {
       if (targetId === currentUserId.value) {
         const { data: bookmarksData, error: bookmarkError } = await supabase
@@ -473,7 +558,7 @@ const loadProfile = async () => {
 const loadAnalysisReports = async (targetId) => {
   try {
     // 공개 범위 체크
-    if (targetId !== currentUserId.value && userProfile.value.privacy_reports === 'private') {
+    if (targetId !== currentUserId.value && privacySupported.value && userProfile.value.privacy_reports === 'private') {
       analysisReports.value = []
       return
     }
@@ -573,6 +658,24 @@ const openFollowModal = async (type) => {
   }
 }
 
+const openProfileReport = () => {
+  showProfileReportModal.value = true
+}
+
+const closeProfileReport = () => {
+  showProfileReportModal.value = false
+  profileReportMessage.value = ''
+}
+
+const submitProfileReport = () => {
+  closeProfileReport()
+  showReportToast.value = true
+  if (reportToastTimer) clearTimeout(reportToastTimer)
+  reportToastTimer = setTimeout(() => {
+    showReportToast.value = false
+  }, 2000)
+}
+
 const startChat = () => {
   const targetId = route.params.userId
   const targetName = nickname.value
@@ -586,6 +689,10 @@ watch(() => route.params.userId, () => {
 
 onMounted(() => {
   loadProfile()
+})
+
+onUnmounted(() => {
+  if (reportToastTimer) clearTimeout(reportToastTimer)
 })
 
 const editProfile = () => router.push({ name: 'ProfileEdit' })
@@ -646,7 +753,8 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .search-name { font-size: 14px; font-weight: 600; color: #333; }
 .search-results.empty { padding: 20px; text-align: center; color: #999; font-size: 13px; }
 
-.profile-header { background: white; padding: 24px 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 1px; }
+.profile-header { position: relative; background: white; padding: 24px 20px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-top: 1px; }
+.profile-report-btn { position: absolute; top: 12px; right: 12px; background: none; border: none; color: #999; font-size: 12px; cursor: pointer; }
 .profile-image-wrapper { position: relative; width: 120px; height: 120px; margin: 0 auto 20px; }
 .profile-img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; border: 4px solid #568265; }
 .verified-badge { position: absolute; top: 8px; right: 8px; background: #27ae60; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; border: 2px solid white; }
@@ -738,6 +846,13 @@ const showSales = () => alert('판매 완료 목록 (준비중)')
 .follow-name { font-size: 14px; font-weight: 600; }
 .empty-list { color: #999; font-size: 13px; padding: 20px; }
 .modal-btn { width: 100%; padding: 12px; background: #568265; color: white; border: none; border-radius: 8px; cursor: pointer; }
+.report-modal { text-align: left; max-width: 360px; }
+.report-hint { color: #777; font-size: 13px; margin: 4px 0 12px; }
+.report-modal textarea { width: 100%; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; font-size: 14px; resize: vertical; min-height: 100px; box-sizing: border-box; }
+.report-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.btn-secondary { background: #f1f1f1; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; color: #555; }
+.btn-primary { background: #568265; color: white; border: none; padding: 10px 14px; border-radius: 8px; cursor: pointer; }
+.toast { position: fixed; bottom: 70px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.85); color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 14px; z-index: 3500; }
 
 @media (max-width: 768px) {
   .action-buttons { flex-direction: column; }

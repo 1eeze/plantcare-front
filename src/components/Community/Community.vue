@@ -102,7 +102,7 @@
 
         <!-- 프로필 + 상호작용 -->
         <div class="post-footer">
-          <div class="profile-info" @click="goToProfile(post.userId || post.user_id)">
+          <div class="profile-info" @click="goToProfile(post.userId || post.user_id, post.name)">
             <div class="profile-wrapper">
               <div class="profile" :style="{ backgroundImage: `url(${post.profile})` }"></div>
               <div class="verification-badge" v-if="post.verified">✓</div>
@@ -418,7 +418,11 @@ export default {
     clearSearch() { this.searchQuery = '' },
     setActiveFilter(filter) { this.activeFilter = filter },
     goToComments(postId) { this.selectedPostId = postId; this.showComment = true },
-    goToProfile(userId) { this.$router.push(`/profile/${userId}`) },
+    goToProfile(userId, name) {
+      const target = userId || name
+      if (!target) return alert('사용자 정보를 찾을 수 없습니다.')
+      this.$router.push(`/profile/${target}`)
+    },
     sharePost(post) { if (navigator.share) { navigator.share({ title: post.title, text: post.text, url: window.location.href }) } else { alert('공유 기능이 지원되지 않는 브라우저입니다.') } },
     applyQuerySearch() {
       const q = this.$route.query.q
