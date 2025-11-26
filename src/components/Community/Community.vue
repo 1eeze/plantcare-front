@@ -78,9 +78,13 @@
               <span class="analyzing-spinner"></span>
               <span class="grade-text">분석중...</span>
             </div>
-            <div v-else-if="post.quality_grade" class="quality-badge" :class="'grade-' + post.quality_grade.toLowerCase()">
+            <div 
+              v-else-if="getDisplayQualityGrade(post)" 
+              class="quality-badge" 
+              :class="'grade-' + getDisplayQualityGrade(post).toLowerCase()"
+            >
               <span class="grade-icon">🏆</span>
-              <span class="grade-text">{{ post.quality_grade }}등급</span>
+              <span class="grade-text">{{ getDisplayQualityGrade(post) }}등급</span>
             </div>
 
             <!-- 즐겨찾기 버튼 -->
@@ -341,6 +345,11 @@ export default {
         .subscribe()
     },
 
+    getDisplayQualityGrade(post) {
+      if (!post) return null
+      return post.quality_grade || post.sensorQuality || null
+    },
+
     async fetchPosts() {
       this.loading = true
       try {
@@ -582,6 +591,11 @@ export default {
       // 캐싱해 재계산 최소화
       post.quality_confidence = computed
       return computed
+    },
+
+    getDisplayQualityGrade(post) {
+      if (!post) return null
+      return post.quality_grade || post.sensorQuality || null
     },
 
     onCommentAdded(postId) {
