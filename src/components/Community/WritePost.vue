@@ -211,7 +211,14 @@ export default {
 
     const handleImageSelect = () => {}
     const removeImage = () => {}
-    const selectPlant = (id) => { selectedPlantId.value = id; showPlantModal.value = false }
+    const applySelectedPlantTitle = () => {
+      const plant = userPlants.value.find(p => p.id === selectedPlantId.value)
+      if (plant) {
+        formData.value.title = plant.name || ''
+      }
+    }
+
+    const selectPlant = (id) => { selectedPlantId.value = id; showPlantModal.value = false; applySelectedPlantTitle() }
     const openPlantModal = () => { if (userPlants.value.length) showPlantModal.value = true }
 
     // 해시태그 추가
@@ -317,14 +324,39 @@ export default {
         if (!user) return
         const { data } = await supabase
           .from('User_Plants')
-          .select('id, name, photos')
+          .select('id, name, photos, plant_data_id')
           .eq('user_id', user.id)
         if (data) {
-          userPlants.value = data.map(p => ({
+          const plants = data.map(p => ({
             id: p.id,
             name: p.name,
+            plant_data_id: p.plant_data_id,
             photo: p.photos?.[0]?.url || null
           }))
+
+          const ids = plants.map(p => p.plant_data_id).filter(Boolean)
+          let speciesMap = {}
+          if (ids.length) {
+            const { data: species } = await supabase
+              .from('plants_data')
+              .select('plant_data_id, name')
+              .in('plant_data_id', ids)
+            if (species) {
+              speciesMap = species.reduce((acc, cur) => {
+                acc[cur.plant_data_id] = cur.name
+                return acc
+              }, {})
+            }
+          }
+
+          userPlants.value = plants.map(p => ({
+            ...p,
+            speciesName: speciesMap[p.plant_data_id] || null
+          }))
+
+          if (selectedPlantId.value) {
+            applySelectedPlantTitle()
+          }
         }
       } catch (err) {
         console.error('내 식물 조회 실패:', err)
@@ -344,7 +376,6 @@ export default {
           .single()
           
         if (!error && data) {
-          selectedPlantId.value = data.plant_id || ''
           formData.value.title = data.title
           formData.value.price = data.price
           formData.value.text = data.text

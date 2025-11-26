@@ -95,6 +95,20 @@
         <!-- 본문 -->
         <div class="post-content" role="button" tabindex="0" @click="goToPost(post.id)" @keydown.enter="goToPost(post.id)" @keydown.space.prevent="goToPost(post.id)">
           <p class="post-description">{{ truncateText(post.text, 80) }}</p>
+          <div v-if="post.sensorStatus !== null" class="sensor-summary">
+            <div class="sensor-chip">
+              <span class="chip-label">🌡 온도</span>
+              <span class="chip-value">{{ formatSensor(post.sensorStatus.temp) }}°C</span>
+            </div>
+            <div class="sensor-chip">
+              <span class="chip-label">💧 습도</span>
+              <span class="chip-value">{{ formatSensor(post.sensorStatus.humidity) }}%</span>
+            </div>
+            <div class="sensor-chip">
+              <span class="chip-label">☀️ 조도</span>
+              <span class="chip-value">{{ formatSensor(post.sensorStatus.light) }} lux</span>
+            </div>
+          </div>
           <div v-if="post.tags && post.tags.length > 0" class="tags">
             <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
           </div>
@@ -340,16 +354,19 @@ export default {
         }
 
         // 3. 데이터 병합
-        this.posts = postsData.map(post => ({
-          ...post,
-          date: this.formatDate(post.created_at),
-          liked: myLikedIds.has(post.id),
-          bookmarked: myBookmarkedIds.has(post.id),
-          // DB 값 그대로 사용 (없으면 0)
-          likes: post.likes || 0,
-          comments: post.comments || 0,
-          views: post.views || 0
-        }))
+      const enriched = postsData.map(post => ({
+        ...post,
+        date: this.formatDate(post.created_at),
+        liked: myLikedIds.has(post.id),
+        bookmarked: myBookmarkedIds.has(post.id),
+        // DB 값 그대로 사용 (없으면 0)
+        likes: post.likes || 0,
+        comments: post.comments || 0,
+        views: post.views || 0,
+        sensorStatus: { humidity: null, temp: null, light: null }
+      }))
+        this.posts = enriched
+        await this.attachSensorStatus(enriched)
 
       } catch (e) {
         console.error('게시글 로드 실패:', e)
@@ -439,6 +456,69 @@ export default {
       const t = String(text)
       if (t.length <= max) return t
       return t.slice(0, max) + '...'
+    },
+    formatSensor(val) {
+      return (val === null || val === undefined || Number.isNaN(val)) ? '-' : val
+    },
+    async attachSensorStatus(posts) {
+      const limit = 10
+      const slice = posts.slice(0, limit)
+      await Promise.all(slice.map(async (post) => {
+        try {
+          let plantId = post.plant_id || null
+
+          if (!plantId) {
+            // 제목과 식물이름 매칭
+            const { data: plantRow, error: plantError } = await supabase
+              .from('User_Plants')
+              .select('id')
+              .eq('user_id', post.user_id)
+              .ilike('name', post.title)
+              .maybeSingle()
+            if (!plantError && plantRow) {
+              plantId = plantRow.id
+            } else if (plantError && plantError.code !== 'PGRST116') {
+              console.error('센서 식물 매칭 오류:', plantError)
+            }
+          }
+
+          if (!plantId) {
+            post.sensorStatus = { humidity: null, temp: null, light: null }
+            return
+          }
+
+          const { data, error } = await supabase
+            .from('sensor_data')
+            .select('humidity, temp, light')
+            .eq('plant_id', plantId)
+            .maybeSingle()
+          if (error) {
+            if (error.code !== 'PGRST116') console.error('센서 데이터 오류:', error)
+            post.sensorStatus = { humidity: null, temp: null, light: null }
+            return
+          }
+          if (!data) {
+            post.sensorStatus = { humidity: null, temp: null, light: null }
+            return
+          }
+          const latestVal = (arr) => {
+            if (!arr) return null
+            if (Array.isArray(arr) && arr.length) {
+              const last = arr[arr.length - 1]
+              return typeof last === 'number' ? last : (last?.value ?? null)
+            }
+            return null
+          }
+          post.sensorStatus = {
+            humidity: latestVal(data.humidity),
+            temp: latestVal(data.temp),
+            light: latestVal(data.light)
+          }
+        } catch (err) {
+          console.error('센서 상태 연동 실패:', err)
+          post.sensorStatus = { humidity: null, temp: null, light: null }
+        }
+      }))
     },
     
     openChat(post) {
@@ -783,6 +863,10 @@ export default {
   margin: 0 0 10px 0;
   line-height: 1.5;
 }
+.sensor-summary { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.sensor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 12px; background: linear-gradient(135deg, #eef7f0, #e4f2ff); color: #2f4858; font-size: 12px; border: 1px solid #d3e5dd; }
+.chip-label { font-weight: 700; color: #4a8063; letter-spacing: -0.2px; }
+.chip-value { font-weight: 700; color: #1e4d6b; }
 
 .tags {
   display: flex;

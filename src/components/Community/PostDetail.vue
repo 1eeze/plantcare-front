@@ -2,7 +2,9 @@
   <div class="post-detail-container" v-if="post">
     <div class="detail-header">
       <button @click="$router.back()" class="back-btn">
-        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18L9 12L15 6"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M15 18L9 12L15 6" />
+        </svg>
       </button>
       <div class="header-actions">
         <button class="icon-report-btn" @click="showReportModal = true" aria-label="신고하기">
@@ -35,7 +37,9 @@
       <p class="date">{{ formatDate(post.created_at) }} · 조회 {{ post.views || 0 }}</p>
       <p class="price" v-if="post.price">{{ formatPrice(post.price) }}</p>
       <p class="description">{{ post.text }}</p>
-<div v-if="sensorStatus !== null" class="sensor-summary">
+
+      <!-- ✅ 센서값: 항상 보이되 값은 formatSensor로 처리 -->
+      <div v-if="sensorStatus !== null" class="sensor-summary">
         <div class="sensor-chip">
           <span class="chip-label">🌡 온도</span>
           <span class="chip-value">{{ formatSensor(sensorStatus.temp) }}°C</span>
@@ -49,7 +53,7 @@
           <span class="chip-value">{{ formatSensor(sensorStatus.light) }} lux</span>
         </div>
       </div>
-      
+
       <div class="tags" v-if="post.tags && post.tags.length">
         <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
       </div>
@@ -60,7 +64,7 @@
         <span class="icon">{{ isLiked ? '❤️' : '🤍' }}</span>
         <span>{{ likeCount }}</span>
       </button>
-      
+
       <button @click="showCommentModal = true" class="icon-btn">
         <span class="icon">💬</span>
         <span>{{ post.comments || 0 }}</span>
@@ -95,7 +99,7 @@
 
     <div v-if="showToast" class="toast">신고가 접수되었습니다</div>
   </div>
-  
+
   <div v-else class="loading">불러오는 중...</div>
 </template>
 
@@ -120,9 +124,17 @@ const showReportModal = ref(false)
 const reportMessage = ref('')
 const showToast = ref(false)
 let toastTimer = null
-const sensorStatus = ref(null)
 
-const isOwner = computed(() => currentUser.value && post.value && currentUser.value.id === post.value.user_id)
+// ✅ 처음부터 객체로 초기화해서 v-if에 걸려서 항상 보이게
+const sensorStatus = ref({
+  temp: null,
+  humidity: null,
+  light: null
+})
+
+const isOwner = computed(
+  () => currentUser.value && post.value && currentUser.value.id === post.value.user_id
+)
 
 const onCommentAdded = () => {
   if (post.value) {
@@ -137,6 +149,8 @@ const onCommentDeleted = () => {
 }
 
 const fetchPost = async () => {
+  console.log('[게시글] 상세 조회 시작, id =', postId)
+
   const { data, error } = await supabase
     .from('posts')
     .select('*')
@@ -144,28 +158,51 @@ const fetchPost = async () => {
     .single()
 
   if (error) {
+    console.error('[게시글] 조회 오류:', error)
     alert('게시글을 찾을 수 없습니다.')
     router.back()
     return
   }
+
+  console.log('[게시글] 조회 결과:', data)
+
   post.value = data
   likeCount.value = data.likes || 0
-await loadSensorStatus(data.user_id, data.title)
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // ✅ post 값이 셋업된 뒤에 센서값 시도 (userId, title 넘겨줌)
+  await loadSensorStatus(data.user_id, data.title)
+
+  const { data: authData } = await supabase.auth.getUser()
+  const user = authData?.user
+
   if (user) {
     currentUser.value = user
-    
-    const { data: likeData } = await supabase.from('likes').select('user_id').eq('user_id', user.id).eq('post_id', postId).single()
+
+    const { data: likeData } = await supabase
+      .from('likes')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('post_id', postId)
+      .maybeSingle()
     isLiked.value = !!likeData
 
-    const { data: markData } = await supabase.from('bookmarks').select('user_id').eq('user_id', user.id).eq('post_id', postId).single()
+    const { data: markData } = await supabase
+      .from('bookmarks')
+      .select('user_id')
+      .eq('user_id', user.id)
+      .eq('post_id', postId)
+      .maybeSingle()
     isBookmarked.value = !!markData
 
     if (user.id !== post.value.user_id) {
-      await supabase.rpc('increment_view', { row_id: postId }).catch(async () => {
-          await supabase.from('posts').update({ views: (post.value.views || 0) + 1 }).eq('id', postId)
-      })
+      await supabase
+        .rpc('increment_view', { row_id: postId })
+        .catch(async () => {
+          await supabase
+            .from('posts')
+            .update({ views: (post.value.views || 0) + 1 })
+            .eq('id', postId)
+        })
       post.value.views = (post.value.views || 0) + 1
     }
   }
@@ -173,19 +210,23 @@ await loadSensorStatus(data.user_id, data.title)
 
 const toggleLike = async () => {
   if (!currentUser.value) return alert('로그인이 필요합니다.')
-  
+
   const originalState = isLiked.value
   isLiked.value = !isLiked.value
   likeCount.value += isLiked.value ? 1 : -1
 
   try {
     if (originalState) {
-      await supabase.from('likes').delete().eq('user_id', currentUser.value.id).eq('post_id', postId)
+      await supabase
+        .from('likes')
+        .delete()
+        .eq('user_id', currentUser.value.id)
+        .eq('post_id', postId)
     } else {
-      await supabase.from('likes').insert({ user_id: currentUser.value.id, post_id: postId })
+      await supabase
+        .from('likes')
+        .insert({ user_id: currentUser.value.id, post_id: postId })
     }
-    // DB 동기화 (선택)
-    // await supabase.from('posts').update({ likes: likeCount.value }).eq('id', postId)
   } catch (e) {
     isLiked.value = originalState
     likeCount.value += isLiked.value ? 1 : -1
@@ -195,15 +236,21 @@ const toggleLike = async () => {
 
 const toggleBookmark = async () => {
   if (!currentUser.value) return alert('로그인이 필요합니다.')
-  
+
   const originalState = isBookmarked.value
   isBookmarked.value = !isBookmarked.value
 
   try {
     if (originalState) {
-      await supabase.from('bookmarks').delete().eq('user_id', currentUser.value.id).eq('post_id', postId)
+      await supabase
+        .from('bookmarks')
+        .delete()
+        .eq('user_id', currentUser.value.id)
+        .eq('post_id', postId)
     } else {
-      await supabase.from('bookmarks').insert({ user_id: currentUser.value.id, post_id: postId })
+      await supabase
+        .from('bookmarks')
+        .insert({ user_id: currentUser.value.id, post_id: postId })
       alert('북마크에 저장되었습니다.')
     }
   } catch (e) {
@@ -236,24 +283,72 @@ const goToProfile = () => {
 
 const formatPrice = (p) => new Intl.NumberFormat('ko-KR').format(p) + '원'
 const formatDate = (d) => new Date(d).toLocaleDateString()
-const getStatusText = (s) => ({ available: '판매중', sold: '판매완료', reserved: '예약중' }[s] || s)
+const getStatusText = (s) =>
+  ({ available: '판매중', sold: '판매완료', reserved: '예약중' }[s] || s)
 
-const formatSensor = (val) => (val === null || val === undefined || Number.isNaN(val)) ? '-' : val
+// ✅ 값이 null/undefined/NaN이면 '-'로 표시
+const formatSensor = (val) =>
+  val === null || val === undefined || Number.isNaN(val) ? '-' : val
 
+// ✅ plant_id 기반 센서 조회 + 제목/유저 기반 fallback
 const loadSensorStatus = async (userId, title) => {
+  // 기본값(모두 '-') 유지
+  sensorStatus.value = { humidity: null, temp: null, light: null }
+
   try {
-    if (!post.value?.plant_id) return
+    let plantId = post.value?.plant_id || null
+
+    // 1순위: posts.plant_id 사용
+    if (plantId) {
+      console.log('[센서] posts.plant_id 사용:', plantId)
+    } else {
+      // 2순위: User_Plants에서 userId + title 매칭
+      if (!userId || !title) {
+        console.log('[센서] userId 또는 title 없음, fallback 불가')
+      } else {
+        const { data: plantRow, error: plantError } = await supabase
+          .from('User_Plants')
+          .select('id, name')
+          .eq('user_id', userId)
+          .ilike('name', title) // 제목과 식물이름 대소문자/부분매칭
+          .maybeSingle()
+
+        if (plantError) {
+          if (plantError.code !== 'PGRST116') {
+            console.error('[센서] User_Plants fallback 에러:', plantError)
+          }
+        } else if (plantRow) {
+          plantId = plantRow.id
+        } else {
+          // 이름 매칭 실패: 가장 최근 업데이트 식물로 fallback
+          const { data: latestPlant, error: latestErr } = await supabase
+            .from('User_Plants')
+            .select('id')
+            .eq('user_id', userId)
+            .order('updated_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (!latestErr && latestPlant) plantId = latestPlant.id
+        }
+      }
+    }
+
+    if (!plantId) {
+      return
+    }
 
     const { data, error } = await supabase
       .from('sensor_data')
       .select('humidity, temp, light')
-      .eq('plant_id', post.value.plant_id)
+      .eq('plant_id', plantId)
       .maybeSingle()
+
     if (error) {
-      if (error.code !== 'PGRST116') console.error('센서 데이터 오류:', error)
+      if (error.code !== 'PGRST116') console.error('[센서] sensor_data 조회 오류:', error)
       return
     }
     if (!data) return
+
     const latestVal = (arr) => {
       if (!arr) return null
       if (Array.isArray(arr) && arr.length > 0) {
@@ -262,13 +357,16 @@ const loadSensorStatus = async (userId, title) => {
       }
       return null
     }
+
     sensorStatus.value = {
       humidity: latestVal(data.humidity),
       temp: latestVal(data.temp),
       light: latestVal(data.light)
     }
+
+    console.log('[센서] 로딩 완료:', sensorStatus.value)
   } catch (err) {
-    console.error('센서 데이터 조회 실패:', err)
+    console.error('[센서] 센서 데이터 조회 실패:', err)
   }
 }
 
@@ -291,6 +389,7 @@ onUnmounted(() => {
 })
 
 onMounted(fetchPost)
+
 </script>
 
 <style scoped>
@@ -318,17 +417,19 @@ onMounted(fetchPost)
 .date { font-size: 13px; color: #999; margin-bottom: 16px; }
 .price { font-size: 18px; font-weight: 700; color: #2c3e50; margin-bottom: 16px; }
 .description { font-size: 15px; line-height: 1.6; color: #333; white-space: pre-wrap; margin-bottom: 20px; }
+
+/* ✅ 센서칩 스타일 */
 .sensor-summary { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-.sensor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px; background: #f3f8f4; color: #2c3e50; font-size: 13px; }
-.chip-label { font-weight: 600; color: #568265; }
-.chip-value { font-weight: 600; }
+.sensor-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 12px; border-radius: 12px; background: linear-gradient(135deg, #eef7f0, #e4f2ff); color: #2f4858; font-size: 13px; border: 1px solid #d3e5dd; }
+.chip-label { font-weight: 700; color: #4a8063; letter-spacing: -0.2px; }
+.chip-value { font-weight: 700; color: #1e4d6b; }
 
 .tags { display: flex; gap: 8px; flex-wrap: wrap; }
 .tag { background: #f0f8f4; color: #568265; padding: 4px 10px; border-radius: 12px; font-size: 12px; }
 
 .bottom-actions { 
   position: fixed; 
-  bottom: 90px; /* 하단 네비게이션 위에 위치 */
+  bottom: 90px;
   left: 0; 
   right: 0; 
   background: white; 
