@@ -451,7 +451,57 @@ export default {
       }
     },
 
-    buyNow(post) { console.log('바로구매:', post.title); alert(`${post.title} 구매를 진행합니다.`) },
+    async buyNow(post) {
+      if (!this.currentUser) {
+        alert('로그인이 필요합니다.')
+        return
+      }
+
+      // 자기 자신의 게시글인지 확인
+      if (post.user_id === this.currentUser.id) {
+        alert('본인의 게시글입니다.')
+        return
+      }
+
+      console.log('바로구매:', post.title)
+
+      try {
+        // 구매자 정보 조회
+        const { data: buyerData } = await supabase
+          .from('Users')
+          .select('name')
+          .eq('id', this.currentUser.id)
+          .single()
+
+        const buyerName = buyerData?.name || '사용자'
+
+        // 판매자에게 알림 전송
+        const { error: notifError } = await supabase
+          .from('notifications')
+          .insert({
+            user_id: post.user_id,
+            type: 'trade',
+            title: '구매 요청',
+            message: `${buyerName}님이 "${post.title}" 구매를 요청했습니다`,
+            read: false,
+            metadata: {
+              price: post.price,
+              plantName: post.title
+            },
+            related_post_id: post.id,
+            related_user_id: this.currentUser.id
+          })
+
+        if (notifError) {
+          console.warn('알림 전송 실패:', notifError)
+        }
+
+        alert(`${post.title} 구매를 진행합니다.\n판매자에게 알림이 전송되었습니다.`)
+      } catch (e) {
+        console.error('바로구매 처리 중 오류:', e)
+        alert(`${post.title} 구매를 진행합니다.`)
+      }
+    },
     getStatusText(status) { const statusMap = { 'available': '판매중', 'reserved': '예약중', 'sold': '판매완료' }; return statusMap[status] || '판매중' },
     formatPrice(value) { return new Intl.NumberFormat('ko-KR').format(value) + '원' },
     formatDate(dateString) {

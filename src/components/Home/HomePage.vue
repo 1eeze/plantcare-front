@@ -319,25 +319,23 @@ const getLatestSensorValue = (jsonbArray) => {
   return jsonbArray[0]?.value ?? null
 }
 
-// 알림 카운트 조회
+// 알림 카운트 조회 (메시지 + 알림)
 const fetchUnreadCount = async () => {
   try {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    const { data: unreadMessages, error } = await supabase
+    // 1. 읽지 않은 메시지 카운트
+    const { data: unreadMessages, error: msgError } = await supabase
       .from('messages')
       .select('sender_id')
       .eq('receiver_id', user.id)
       .eq('is_read', false)
       .neq('content', '::SYSTEM_LEAVE::')
 
-    if (error) throw error
-    if (!unreadMessages || unreadMessages.length === 0) {
-      notificationCount.value = 0
-      return
-    }
+    if (msgError) throw msgError
 
+    // 뮤트된 사용자 제외
     const { data: mutedSettings } = await supabase
       .from('chat_settings')
       .select('partner_id')
@@ -345,12 +343,28 @@ const fetchUnreadCount = async () => {
       .eq('is_muted', true)
 
     const mutedSenderIds = new Set(mutedSettings?.map(s => s.partner_id) || [])
-    const validUnreadCount = unreadMessages.filter(msg => !mutedSenderIds.has(msg.sender_id)).length
-    notificationCount.value = validUnreadCount
+    const validUnreadMessageCount = (unreadMessages || []).filter(msg => !mutedSenderIds.has(msg.sender_id)).length
+
+    // 2. 읽지 않은 알림 카운트
+    const { data: unreadNotifications, error: notifError } = await supabase
+      .from('notifications')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('read', false)
+
+    if (notifError) {
+      // notifications 테이블이 아직 없을 수 있으므로 에러는 무시
+      console.warn('알림 테이블 조회 실패 (테이블이 없을 수 있음):', notifError)
+    }
+
+    const unreadNotificationCount = unreadNotifications?.count || 0
+
+    // 총 알림 수 = 메시지 + 알림
+    notificationCount.value = validUnreadMessageCount + unreadNotificationCount
   } catch (e) { console.error(e) }
 }
 
-// 알림 배지 실시간 업데이트
+// 알림 배지 실시간 업데이트 (메시지 + 알림)
 const subscribeToBadgeUpdates = async () => {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
@@ -358,11 +372,19 @@ const subscribeToBadgeUpdates = async () => {
 
   badgeSubscription = supabase
     .channel('home-badge-updates')
-    .on('postgres_changes', { 
-      event: '*', 
-      schema: 'public', 
-      table: 'messages', 
-      filter: `receiver_id=eq.${user.id}` 
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'messages',
+      filter: `receiver_id=eq.${user.id}`
+    }, () => {
+      fetchUnreadCount()
+    })
+    .on('postgres_changes', {
+      event: '*',
+      schema: 'public',
+      table: 'notifications',
+      filter: `user_id=eq.${user.id}`
     }, () => {
       fetchUnreadCount()
     })
