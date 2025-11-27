@@ -261,6 +261,92 @@ const userName = ref('식물집사')
 const location = ref('Seoul, KOREA')
 const showMenu = ref(false)
 
+// 사용자 위치 정보 상태
+const userCoordinates = ref({
+  lat: 37.5665, // 서울 기본값
+  lon: 126.9780
+})
+
+// 사용자 위치 가져오기
+async function getUserLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      console.log('위치 정보를 지원하지 않는 브라우저입니다.')
+      resolve({
+        lat: 37.5665,
+        lon: 126.9780,
+        city: 'Seoul, KOREA'
+      })
+      return
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const lat = position.coords.latitude
+        const lon = position.coords.longitude
+        
+        console.log('📍 사용자 위치:', lat, lon)
+        
+        // Reverse Geocoding으로 도시 이름 가져오기
+        try {
+          const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY || '081609a8087de530b09f6afff8ba9981'
+          const response = await fetch(
+            `https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${apiKey}`
+          )
+          
+          if (response.ok) {
+            const data = await response.json()
+            console.log('🌍 Geocoding 결과:', data)
+            
+            const cityName = data[0]?.local_names?.ko || data[0]?.name || 'Unknown'
+            const stateName = data[0]?.state || ''
+            const countryName = data[0]?.country || 'KR'
+            
+            // 한국어 이름 우선, 없으면 영어 이름
+            const displayCity = stateName ? `${cityName}, ${stateName}` : `${cityName}, ${countryName}`
+            
+            console.log('📍 표시할 위치:', displayCity)
+            
+            resolve({
+              lat: lat,
+              lon: lon,
+              city: displayCity
+            })
+          } else {
+            console.log('Geocoding 실패, 좌표만 사용')
+            resolve({
+              lat: lat,
+              lon: lon,
+              city: `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`
+            })
+          }
+        } catch (error) {
+          console.error('도시 이름 가져오기 실패:', error)
+          resolve({
+            lat: lat,
+            lon: lon,
+            city: `${lat.toFixed(2)}°, ${lon.toFixed(2)}°`
+          })
+        }
+      },
+      (error) => {
+        console.log('위치 정보 가져오기 실패:', error.message)
+        console.log('서울을 기본 위치로 설정합니다.')
+        resolve({
+          lat: 37.5665,
+          lon: 126.9780,
+          city: 'Seoul, KOREA'
+        })
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 5000,
+        maximumAge: 300000
+      }
+    )
+  })
+}
+
 // 알림 관련 상태
 const notificationCount = ref(0) 
 
@@ -268,6 +354,112 @@ const notificationCount = ref(0)
 const weather = ref({ temp: 0, description: '로딩 중…', humidity: 0, uv: '-' })
 const loadingWeather = ref(false)
 const todayTip = ref('오늘의 날씨에 맞춰 식물 관리 팁을 불러오는 중이에요.')
+
+// 날씨 로드 함수
+async function loadWeather() {
+  loadingWeather.value = true
+  
+  try {
+    // 사용자 위치 가져오기
+    const locationData = await getUserLocation()
+    
+    // 위치 정보 업데이트
+    userCoordinates.value = {
+      lat: locationData.lat,
+      lon: locationData.lon
+    }
+    location.value = locationData.city
+    
+    console.log('🌍 최종 사용 위치:', locationData.city, locationData.lat, locationData.lon)
+    
+    // OpenWeather API 키
+    const apiKey = import.meta.env.VITE_OPENWEATHER_API_KEY || '081609a8087de530b09f6afff8ba9981'
+    
+    // One Call 3.0 API 호출
+    const response = await fetch(
+      `https://api.openweathermap.org/data/3.0/onecall?lat=${locationData.lat}&lon=${locationData.lon}&exclude=minutely,hourly,alerts&units=metric&lang=kr&appid=${apiKey}`
+    )
+    
+    if (!response.ok) {
+      throw new Error(`날씨 API 오류: ${response.status}`)
+    }
+    
+    const data = await response.json()
+    console.log('🌤️ 날씨 데이터:', data)
+    
+    // 현재 날씨 정보 추출
+    const current = data.current
+    const temp = Math.round(current.temp)
+    const description = current.weather[0]?.description || '맑음'
+    const humidity = current.humidity
+    
+    // UV 인덱스 변환
+    const uvIndex = current.uvi
+    let uvLevel = '낮음'
+    if (uvIndex >= 8) uvLevel = '매우 높음'
+    else if (uvIndex >= 6) uvLevel = '높음'
+    else if (uvIndex >= 3) uvLevel = '보통'
+    
+    weather.value = {
+      temp: temp,
+      description: description,
+      humidity: humidity,
+      uv: uvLevel
+    }
+    
+    // 날씨에 따른 식물 관리 팁 생성
+    todayTip.value = generateWeatherTip(temp, humidity, description, uvIndex)
+    
+  } catch (e) {
+    console.error('날씨 로드 오류:', e)
+    // 에러 시 기본값 유지 (이미 Seoul로 설정됨)
+    weather.value = {
+      temp: 22,
+      description: '정보 없음',
+      humidity: 65,
+      uv: '보통'
+    }
+    todayTip.value = '날씨 정보를 불러올 수 없습니다. 식물 상태를 직접 확인해주세요.'
+  } finally {
+    loadingWeather.value = false
+  }
+}
+
+// 날씨에 따른 팁 생성 함수
+function generateWeatherTip(temp, humidity, description, uvIndex) {
+  // 온도 기반 팁
+  if (temp < 10) {
+    return '🥶 기온이 낮습니다. 실내 식물은 창문에서 멀리 두고 냉기를 피해주세요.'
+  } else if (temp > 30) {
+    return '🌡️ 기온이 높습니다. 물을 충분히 주고 직사광선을 피해주세요.'
+  }
+  
+  // 습도 기반 팁
+  if (humidity < 40) {
+    return '💧 습도가 낮습니다. 분무기로 잎에 물을 뿌려주면 좋아요.'
+  } else if (humidity > 80) {
+    return '💨 습도가 높습니다. 환기를 자주 해주세요.'
+  }
+  
+  // UV 기반 팁
+  if (uvIndex > 6) {
+    return '☀️ 자외선이 강합니다. 식물을 밝은 곳에 두되 직사광선은 피해주세요.'
+  }
+  
+  // 날씨 설명 기반 팁
+  if (description.includes('비') || description.includes('rain')) {
+    return '🌧️ 비가 옵니다. 실내 습도가 높아질 수 있으니 환기를 신경써주세요.'
+  } else if (description.includes('눈') || description.includes('snow')) {
+    return '❄️ 눈이 옵니다. 실내 온도를 따뜻하게 유지해주세요.'
+  } else if (description.includes('맑') || description.includes('clear')) {
+    return '☀️ 날씨가 좋아요! 실내 식물은 창가에 두면 좋습니다.'
+  } else if (description.includes('구름') || description.includes('cloud')) {
+    return '☁️ 구름이 많아요. 식물에게 충분한 빛을 제공해주세요.'
+  }
+  
+  // 기본 팁
+  return '🌱 오늘도 식물에게 관심과 사랑을 주세요!'
+}
 
 // 데이터
 const plants = ref([])
@@ -653,37 +845,13 @@ async function analyzeGrowth(imageFile) {
   }
 }
 
-// 등급 번역 사전 추가
-const GRADE_DICT = {
-  "S": {
-    label: "S등급 (특상)",
-    description: "최상급 품질입니다. 상품성이 매우 우수합니다.",
-    color: "#ffd700"
-  },
-  "A": {
-    label: "A등급 (상)",
-    description: "우수한 품질입니다. 상품성이 좋습니다.",
-    color: "#c0c0c0"
-  },
-  "B": {
-    label: "B등급 (중)",
-    description: "보통 품질입니다. 개선이 필요합니다.",
-    color: "#cd7f32"
-  },
-  "default": {
-    label: "등급 미분류",
-    description: "등급을 판정할 수 없습니다.",
-    color: "#95a5a6"
-  }
-}
-
 const handleImageFile = async (file) => {
   if (!file) {
     console.warn('⚠️ 파일이 선택되지 않음')
     return
   }
   
-  console.log('📸 이미지 분석 시작 (병충해 + 생육 + 등급):', file.name)
+  console.log('📸 이미지 분석 시작 (병충해 + 생육):', file.name)
   
   showCameraChoice.value = false
   analyzingPest.value = true
@@ -691,7 +859,7 @@ const handleImageFile = async (file) => {
   growthResult.value = null
 
   try {
-    // ✅ 3개 API 병렬 호출
+    // ✅ 2개 API 병렬 호출
     const [pestRes, growthRes] = await Promise.all([
       analyzePest(file), 
       analyzeGrowth(file),
@@ -964,23 +1132,6 @@ async function ensureDevSession() {
     }
   } catch (e) {
     console.error('세션 확인 오류:', e)
-  }
-}
-
-async function loadWeather() {
-  loadingWeather.value = true
-  try {
-    weather.value = {
-      temp: 22,
-      description: '맑음',
-      humidity: 65,
-      uv: '보통'
-    }
-    todayTip.value = '오늘은 날씨가 좋아요! 실내 식물은 창가에 두면 좋습니다.'
-  } catch (e) {
-    console.error('날씨 로드 오류:', e)
-  } finally {
-    loadingWeather.value = false
   }
 }
 
