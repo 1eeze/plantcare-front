@@ -12,8 +12,8 @@
           :disabled="loading"
           class="search-input"
         />
-        <button 
-          @click="clearSearch" 
+        <button
+          @click="clearSearch"
           v-if="searchQuery"
           class="clear-btn"
           type="button"
@@ -22,7 +22,7 @@
           ✕
         </button>
       </div>
-      <button 
+      <button
         @click="handleSearch"
         :disabled="loading"
         class="search-btn"
@@ -34,7 +34,7 @@
     <!-- 로딩 상태 -->
     <div v-if="loading" class="loading-container">
       <div class="loading-spinner"></div>
-      <p>식물 정보를 가져오는 중...</p>
+      <p>식물 시세 정보를 불러오는 중...</p>
     </div>
 
     <!-- 에러 상태 -->
@@ -51,197 +51,170 @@
 
     <!-- 식물 리스트 -->
     <div v-else class="plant-list">
-      <div 
-        class="plant-item" 
-        v-for="plant in plants" 
-        :key="plant.id"
-        @click="goToPlantDetail(plant.id)"
-        role="button"
-        tabindex="0"
-        @keydown.enter="goToPlantDetail(plant.id)"
-        @keydown.space.prevent="goToPlantDetail(plant.id)"
+      <div
+        class="plant-item"
+        v-for="plant in plants"
+        :key="plant.plant_data_id"
+        @click="goToPlantDetail(plant.plant_data_id)"
       >
-        <!-- 왼쪽: 이미지 + 이름 -->
+        <!-- 왼쪽: 이름 -->
         <div class="plant-left">
-          <div class="plant-image-wrapper">
-            <img 
-              :src="getPlantImage(plant)" 
-              :alt="plant.common_name || '식물'"
-              class="plant-logo"
-              @error="handleImageError"
-            />
-          </div>
           <div class="plant-info">
-            <p class="plant-name">{{ plant.common_name || plant.scientific_name || '이름 없음' }}</p>
-            <p class="plant-scientific" v-if="plant.scientific_name && plant.common_name">
-              {{ plant.scientific_name }}
+            <p class="plant-name">{{ plant.name || '이름 없음' }}</p>
+            <p class="plant-subtitle" v-if="plant.data">
+              {{ truncateText(plant.data, 40) }}
             </p>
           </div>
         </div>
 
         <!-- 오른쪽: 변동률 + 가격 -->
         <div class="plant-right">
-          <p 
-            class="plant-change" 
-            :class="getPriceChangeClass(plant.fakeChange)"
+          <p
+            v-if="plant.priceChange !== null"
+            class="plant-change"
+            :class="getPriceChangeClass(plant.priceChange)"
           >
-            {{ formatChange(plant.fakeChange) }}
+            {{ formatChange(plant.priceChange) }}
           </p>
-          <p class="plant-price">{{ formatPrice(plant.fakePrice) }}</p>
+          <p class="plant-price">{{ formatPrice(plant.avg_price) }}</p>
         </div>
       </div>
-    </div>
-
-    <!-- 더보기 버튼 -->
-    <div v-if="plants.length > 0 && !loading" class="load-more-container">
-      <button @click="loadMore" :disabled="loadingMore" class="load-more-btn">
-        {{ loadingMore ? '로딩중...' : '더보기' }}
-      </button>
     </div>
   </div>
 </template>
 
-<script>
-import axios from "axios";
+<script setup>
+import { ref, onMounted, onBeforeUnmount } from 'vue'
+import { useRouter } from 'vue-router'
+import { supabase } from '@/utils/supabase'
 
-export default {
-  name: "MarketPrice",
-  data() {
-    return {
-      plants: [],
-      searchQuery: "",
-      loading: false,
-      loadingMore: false,
-      error: null,
-      currentPage: 1,
-      searchTimeout: null
+const router = useRouter()
+
+// State
+const plants = ref([])
+const searchQuery = ref('')
+const loading = ref(false)
+const error = ref(null)
+const searchTimeout = ref(null)
+
+// Methods
+const fetchPlants = async () => {
+  loading.value = true
+  error.value = null
+
+  try {
+    let query = supabase
+      .from('plants_data')
+      .select('plant_data_id, name, data, price_list, "avg.price"')
+      .order('name', { ascending: true })
+
+    // 검색어가 있으면 필터링
+    if (searchQuery.value.trim()) {
+      query = query.ilike('name', `%${searchQuery.value.trim()}%`)
     }
-  },
-  mounted() {
-    this.fetchPlants();
-  },
-  methods: {
-    async fetchPlants(isLoadMore = false) {
-      if (!isLoadMore) {
-        this.loading = true;
-        this.currentPage = 1;
-      } else {
-        this.loadingMore = true;
-      }
-      
-      this.error = null;
 
-      try {
-        const response = await axios.get("https://perenual.com/api/species-list", {
-          params: {
-            key: "sk-hKOs68c7f61cbdc8412380",
-            page: this.currentPage,
-            q: this.searchQuery || undefined,
-            per_page: 20
-          },
-          timeout: 10000 // 10초 타임아웃
-        });
+    const { data, error: fetchError } = await query
 
-        const newPlants = response.data.data.map(plant => ({
-          ...plant,
-          fakePrice: Math.floor(Math.random() * 200000) + 10000,
-          fakeChange: (Math.random() * 6 - 3).toFixed(1)
-        }));
+    if (fetchError) {
+      console.error('plants_data 조회 실패:', fetchError)
+      error.value = '식물 시세 정보를 불러오는데 실패했습니다.'
+      return
+    }
 
-        if (isLoadMore) {
-          this.plants = [...this.plants, ...newPlants];
-        } else {
-          this.plants = newPlants;
+    // 가격 변동률 계산
+    plants.value = (data || []).map(plant => {
+      const priceList = plant.price_list || []
+      let priceChange = null
+
+      // price_list에 2개 이상의 데이터가 있으면 변동률 계산
+      if (priceList.length >= 2) {
+        // 객체 배열에서 price 추출
+        const latest = parseFloat(priceList[priceList.length - 1]?.price)
+        const previous = parseFloat(priceList[priceList.length - 2]?.price)
+        if (!isNaN(latest) && !isNaN(previous) && previous !== 0) {
+          priceChange = (((latest - previous) / previous) * 100).toFixed(1)
         }
-
-      } catch (err) {
-        console.error('API 요청 실패:', err);
-        this.error = this.getErrorMessage(err);
-      } finally {
-        this.loading = false;
-        this.loadingMore = false;
       }
-    },
 
-    handleSearch() {
-      if (this.searchTimeout) {
-        clearTimeout(this.searchTimeout);
+      return {
+        ...plant,
+        avg_price: plant['avg.price'],
+        priceChange
       }
-      this.fetchPlants();
-    },
+    })
 
-    onSearchInput() {
-      // 디바운싱: 500ms 후에 자동 검색
-      if (this.searchTimeout) {
-        clearTimeout(this.searchTimeout);
-      }
-      this.searchTimeout = setTimeout(() => {
-        this.fetchPlants();
-      }, 500);
-    },
+    console.log('불러온 식물 시세 데이터:', plants.value)
 
-    clearSearch() {
-      this.searchQuery = '';
-      this.fetchPlants();
-    },
-
-    loadMore() {
-      this.currentPage += 1;
-      this.fetchPlants(true);
-    },
-
-    goToPlantDetail(plantId) {
-      this.$router.push(`/plant/${plantId}`);
-    },
-
-    getPlantImage(plant) {
-      return plant.default_image?.thumbnail || 
-             plant.default_image?.original_url || 
-             '/assets/default-plant.png';
-    },
-
-    handleImageError(event) {
-      event.target.src = '/assets/default-plant.png';
-    },
-
-    formatPrice(price) {
-      if (typeof price !== 'number') return '가격 정보 없음';
-      return price.toLocaleString('ko-KR') + '원';
-    },
-
-    formatChange(change) {
-      const num = parseFloat(change);
-      if (isNaN(num)) return '0.0%';
-      return (num > 0 ? '+' : '') + num + '%';
-    },
-
-    getPriceChangeClass(change) {
-      const num = parseFloat(change);
-      if (num > 0) return 'up';
-      if (num < 0) return 'down';
-      return 'neutral';
-    },
-
-    getErrorMessage(error) {
-      if (error.code === 'ECONNABORTED') {
-        return '요청 시간이 초과되었습니다. 다시 시도해주세요.';
-      }
-      if (error.response?.status === 429) {
-        return 'API 요청 한도를 초과했습니다. 잠시 후 다시 시도해주세요.';
-      }
-      if (error.response?.status >= 500) {
-        return '서버에 문제가 발생했습니다. 잠시 후 다시 시도해주세요.';
-      }
-      return '데이터를 불러오는데 실패했습니다.';
-    }
-  },
-
-  beforeUnmount() {
-    if (this.searchTimeout) {
-      clearTimeout(this.searchTimeout);
-    }
+  } catch (err) {
+    console.error('데이터 로드 중 오류:', err)
+    error.value = '데이터를 불러오는데 실패했습니다.'
+  } finally {
+    loading.value = false
   }
 }
+
+const handleSearch = () => {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  fetchPlants()
+}
+
+const onSearchInput = () => {
+  // 디바운싱: 500ms 후에 자동 검색
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+  searchTimeout.value = setTimeout(() => {
+    fetchPlants()
+  }, 500)
+}
+
+const clearSearch = () => {
+  searchQuery.value = ''
+  fetchPlants()
+}
+
+const goToPlantDetail = (plantId) => {
+  router.push(`/marketprice/plant/${plantId}`)
+}
+
+const truncateText = (text, maxLength) => {
+  if (!text) return ''
+  if (text.length <= maxLength) return text
+  return text.substring(0, maxLength) + '...'
+}
+
+const formatPrice = (price) => {
+  if (price === null || price === undefined) return '시세 정보 없음'
+  const num = parseFloat(price)
+  if (isNaN(num)) return '시세 정보 없음'
+  return num.toLocaleString('ko-KR') + '원'
+}
+
+const formatChange = (change) => {
+  const num = parseFloat(change)
+  if (isNaN(num)) return '0.0%'
+  return (num > 0 ? '+' : '') + num + '%'
+}
+
+const getPriceChangeClass = (change) => {
+  const num = parseFloat(change)
+  if (num > 0) return 'up'
+  if (num < 0) return 'down'
+  return 'neutral'
+}
+
+// Lifecycle
+onMounted(() => {
+  fetchPlants()
+})
+
+onBeforeUnmount(() => {
+  if (searchTimeout.value) {
+    clearTimeout(searchTimeout.value)
+  }
+})
 </script>
 
 <style scoped>
@@ -416,25 +389,7 @@ export default {
   align-items: center;
   gap: 12px;
   flex: 1;
-}
-
-.plant-image-wrapper {
-  position: relative;
-  flex-shrink: 0;
-}
-
-.plant-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 12px;
-  object-fit: cover;
-  border: 2px solid #f0f0f0;
-  transition: all 0.3s ease;
-}
-
-.plant-item:hover .plant-logo {
-  border-color: #568265;
-  transform: scale(1.05);
+  min-width: 0;
 }
 
 .plant-info {
@@ -446,18 +401,18 @@ export default {
   font-weight: 600;
   font-size: 16px;
   color: #2c3e50;
-  margin: 0 0 4px 0;
+  margin: 0 0 6px 0;
   line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.plant-scientific {
-  font-size: 12px;
+.plant-subtitle {
+  font-size: 13px;
   color: #7f8c8d;
   margin: 0;
-  font-style: italic;
+  line-height: 1.4;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

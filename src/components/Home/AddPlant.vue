@@ -115,8 +115,11 @@
               type="text"
               placeholder="식물 종류를 입력하세요 (예: 몬스테라)"
               class="dialog-input"
-              @keyup.enter="performSearch"
+              @keydown.enter="handleSearchKeydown"
+              @compositionstart="isComposing = true"
+              @compositionend="isComposing = false"
               :disabled="searchingPlant"
+              ref="searchInputRef"
             />
           </div>
 
@@ -306,6 +309,8 @@ const showSearchDialog = ref(false)
 const searchInput = ref('')
 const searchResult = ref(null)
 const searchError = ref(null)
+const isComposing = ref(false) // IME 조합 중인지 확인
+const searchInputRef = ref(null)
 
 const sensorData = ref({
   soilMoisture: 0,
@@ -375,6 +380,7 @@ const closeSearchDialog = () => {
     searchInput.value = ''
     searchResult.value = null
     searchError.value = null
+    isComposing.value = false
   }
 }
 
@@ -384,19 +390,43 @@ const clearSearchResult = () => {
   searchError.value = null
 }
 
+// 엔터 키 핸들러 (IME 조합 완료 확인)
+const handleSearchKeydown = (event) => {
+  // IME 조합 중이면 아무것도 하지 않음
+  if (isComposing.value) {
+    return
+  }
+
+  // 엔터 키이고 조합 중이 아닐 때만 검색 실행
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    // 약간의 지연을 두어 조합 완료를 확실히 보장
+    setTimeout(() => {
+      performSearch()
+    }, 100)
+  }
+}
+
 // 식물 검색 실행
 const performSearch = async () => {
-  if (!searchInput.value.trim()) return
+  // IME 조합 중이거나 입력값이 없으면 중단
+  if (isComposing.value || !searchInput.value.trim()) {
+    return
+  }
 
   searchingPlant.value = true
   searchError.value = null
   searchResult.value = null
 
   try {
+    // 최종 입력값을 다시 한 번 확인 (조합 완료 보장)
+    const finalInput = searchInput.value.trim()
+
     // 공백과 특수문자 제거
-    const plantName = searchInput.value.replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣]/g, '')
+    const plantName = finalInput.replace(/[^a-zA-Z0-9ㄱ-ㅎㅏ-ㅣ가-힣]/g, '')
 
     console.log('식물 검색 시작:', plantName)
+    console.log('원본 입력:', finalInput)
 
     // Trefle API 호출
     const { data: { session } } = await supabase.auth.getSession()
@@ -460,6 +490,7 @@ const selectPlantSpecies = () => {
     searchInput.value = ''
     searchResult.value = null
     searchError.value = null
+    isComposing.value = false
   }
 }
 

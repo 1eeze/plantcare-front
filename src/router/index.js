@@ -16,6 +16,7 @@ import Notification from '@/components/Home/Notification.vue'
 import ReportsPage from '@/components/Home/ReportsPage.vue'
 import MarketPrice from '@/components/MarketPrice/MarketPrice.vue'
 import PriceDetail from '@/components/MarketPrice/PriceDetail.vue'
+import PlantPriceDetail from '@/components/MarketPrice/PlantPriceDetail.vue'
 import Community from '@/components/Community/Community.vue'
 import WritePost from '@/components/Community/WritePost.vue'
 import ProfilePage from '@/components/Profile/ProfilePage.vue'
@@ -79,15 +80,22 @@ const routes = [
         meta: { requiresAuth: true }
       },
       {
-        path: 'marketprice', 
+        path: 'marketprice',
         name: 'MarketPrice',
-        component: MarketPrice 
+        component: MarketPrice
       },
-      { 
-        path: 'plant/:id', 
+      {
+        path: 'marketprice/plant/:id',
+        name: 'PlantPriceDetail',
+        component: PlantPriceDetail,
+        props: true,
+        meta: { requiresAuth: true, showBottomNav: false }
+      },
+      {
+        path: 'plant/:id',
         name: 'PriceDetail',
-        component: PriceDetail, 
-        props: true 
+        component: PriceDetail,
+        props: true
       },
       { 
         path: 'community', 
