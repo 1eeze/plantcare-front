@@ -16,9 +16,14 @@
           </svg>
         </button>
         <h1 class="header-title">식물 상세</h1>
-        <button v-if="isOwner" @click="confirmDelete" class="delete-btn" title="식물 삭제">
-          🗑️
-        </button>
+        <button @click="confirmDelete" class="delete-btn" title="식물 삭제">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+          <path d="M3 6h18M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M10 11v6M14 11v6" 
+                stroke-width="2" 
+                stroke-linecap="round" 
+                stroke-linejoin="round"/>
+        </svg>
+      </button>
       </div>
 
       <!-- 식물 이미지 -->
@@ -320,10 +325,10 @@
       <div class="care-section">
         <h3 class="section-title">식물 관리</h3>
         <div class="care-actions">
-          <button class="care-action-btn" @click="waterPlant">
+          <!-- <button class="care-action-btn" @click="waterPlant">
             <span class="action-icon">💧</span>
             <span class="action-text">물주기</span>
-          </button>
+          </button> -->
           <button class="care-action-btn" @click="analyzePlant" :disabled="analyzing">
             <span class="action-icon">{{ analyzing ? '🔄' : '🔬' }}</span>
             <span class="action-text">{{ analyzing ? '분석 중...' : 'AI 분석' }}</span>
@@ -450,7 +455,7 @@ const aiAnalysisResult = ref(null)
 
 // 최근 관리 기록
 const recentHistory = ref([
-  { id: 1, action: '물주기 완료', icon: '💧', date: new Date().toISOString() },
+  // { id: 1, action: '물주기 완료', icon: '💧', date: new Date().toISOString() },
   { id: 2, action: 'AI 분석 완료', icon: '🔬', date: new Date(Date.now() - 86400000).toISOString() },
 ])
 
@@ -989,30 +994,46 @@ const getStatusClass = (status) => {
 
 // 삭제 확인
 const confirmDelete = () => {
-  if (!isOwner.value) return
+  console.log('삭제 버튼 클릭됨')
+  console.log('현재 사용자 ID:', currentUserId.value)
+  console.log('식물 소유자 ID:', plant.value?.user_id)
+  console.log('isOwner:', isOwner.value)
+  
   showDeleteConfirm.value = true
 }
 
 // 실제 삭제
 const deletePlant = async () => {
-  if (deleting.value) return
+  console.log('deletePlant 함수 실행')
+  
+  if (deleting.value) {
+    console.log('이미 삭제 중...')
+    return
+  }
 
   deleting.value = true
 
   try {
+    console.log('삭제 시도 - plantId:', plantId)
+    
     const { error } = await supabase
       .from('User_Plants')
       .delete()
       .eq('id', plantId)
 
-    if (error) throw error
+    console.log('삭제 결과 - error:', error)
+
+    if (error) {
+      console.error('삭제 에러:', error)
+      throw error
+    }
 
     alert('✅ 식물이 삭제되었습니다.')
     router.push('/')
 
   } catch (err) {
     console.error('삭제 실패:', err)
-    alert('❌ 삭제 중 오류가 발생했습니다.')
+    alert(`❌ 삭제 중 오류가 발생했습니다: ${err.message}`)
   } finally {
     deleting.value = false
     showDeleteConfirm.value = false
@@ -1024,9 +1045,9 @@ const goBack = () => {
   router.push('/')
 }
 
-const waterPlant = () => {
-  alert('💧 물주기 기능은 개발 중입니다!')
-}
+// const waterPlant = () => {
+//  alert('💧 물주기 기능은 개발 중입니다!')
+// }
 
 const editPlant = () => {
   router.push(`/edit-plant/${plantId}`)
@@ -1107,16 +1128,38 @@ onMounted(() => {
 }
 
 .delete-btn {
-  background: none;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%);
   border: none;
-  font-size: 22px;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
   cursor: pointer;
-  padding: 8px;
-  transition: transform 0.2s;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(238, 90, 111, 0.3);
+}
+
+.delete-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(238, 90, 111, 0.4);
+  background: linear-gradient(135deg, #ff5252 0%, #e63946 100%);
 }
 
 .delete-btn:active {
-  transform: scale(0.95);
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(238, 90, 111, 0.3);
+}
+
+.delete-btn svg {
+  color: white;
+  transition: transform 0.3s ease;
+}
+
+.delete-btn:hover svg {
+  transform: scale(1.1);
 }
 
 /* 이미지 섹션 */
@@ -1587,7 +1630,7 @@ onMounted(() => {
 
 .care-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
@@ -1987,7 +2030,7 @@ onMounted(() => {
   }
 
   .care-actions {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
   
   .comparison-content {
