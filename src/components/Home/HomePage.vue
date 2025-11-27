@@ -18,6 +18,7 @@
         </div>
         
         <div class="result-content">
+          <!-- 병충해 카드 -->
           <div class="result-card pest-card" @click="togglePestDetail">
             <div class="card-header">
               <span class="card-icon">🐛</span>
@@ -26,10 +27,7 @@
             </div>
             <div class="card-summary">
               <p class="pest-name">{{ pestResult?.krName || '감지되지 않음' }}</p>
-              <p v-if="pestResult?.confidence > 0" class="confidence">
-                신뢰도: {{ (pestResult.confidence * 100).toFixed(1) }}%
-              </p>
-              <p v-else-if="pestResult?.className === 'none'" class="no-detection-msg">
+              <p v-if="pestResult?.className === 'none'" class="no-detection-msg">
                 사진에서 병충해가 감지되지 않았습니다. 건강한 식물입니다! 🌿
               </p>
             </div>
@@ -47,6 +45,7 @@
             </div>
           </div>
 
+          <!-- 생육 부위 카드 -->
           <div class="result-card organ-card" @click="toggleOrganDetail">
             <div class="card-header">
               <span class="card-icon">🌿</span>
@@ -55,9 +54,6 @@
             </div>
             <div class="card-summary">
               <p class="organ-name">{{ growthResult?.organ || '감지되지 않음' }}</p>
-              <p v-if="growthResult?.organConfidence" class="confidence">
-                신뢰도: {{ (growthResult.organConfidence * 100).toFixed(1) }}%
-              </p>
             </div>
             
             <div v-if="showOrganDetail && growthResult" class="card-detail">
@@ -66,6 +62,7 @@
             </div>
           </div>
 
+          <!-- 성장 단계 카드 -->
           <div class="result-card stage-card" @click="toggleStageDetail">
             <div class="card-header">
               <span class="card-icon">🌱</span>
@@ -74,9 +71,6 @@
             </div>
             <div class="card-summary">
               <p class="stage-name">{{ growthResult?.stage || '감지되지 않음' }}</p>
-              <p v-if="growthResult?.stageConfidence" class="confidence">
-                신뢰도: {{ (growthResult.stageConfidence * 100).toFixed(1) }}%
-              </p>
             </div>
             
             <div v-if="showStageDetail && growthResult" class="card-detail">
@@ -186,7 +180,7 @@
       </div>
     </div>
 
-    <div class="section-title">
+    <!-- <div class="section-title">
       <h3>빠른 관리</h3>
     </div>
     <div class="quick-actions">
@@ -203,7 +197,8 @@
         <span class="action-text">알림 설정</span>
       </button>
     </div>
-
+     -->
+    
     <div class="section-title">
       <h3>오늘 할 일</h3>
     </div>
@@ -230,7 +225,7 @@
       <div class="camera-choice-sheet">
         <p class="camera-choice-title">사진을 어떻게 가져올까요?</p>
         <button class="camera-choice-btn" @click="takePhoto">📷 사진 촬영</button>
-        <button class="camera-choice-btn" @click="pickFromGallery">📊 리포트에서 선택</button>
+        <button class="camera-choice-btn" @click="pickFromGallery">🖼️ 갤러리에서 선택</button>
         <button class="camera-choice-cancel" @click="showCameraChoice = false">취소</button>
       </div>
     </div>
@@ -736,9 +731,18 @@ const takePhoto = () => {
   input.click()
 }
 const pickFromGallery = () => {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = 'image/*'
+  // capture 속성 제거 - 갤러리에서 선택 가능하게
+  input.onchange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      handleImageFile(file)
+    }
+  }
+  input.click()
   showCameraChoice.value = false
-  // 리포트 페이지로 이동하거나 리포트 목록을 보여줌
-  viewAllReports()
 }
 const closePestResult = () => {
   showPestResult.value = false
@@ -1108,13 +1112,91 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
 .section-title h3 { margin: 0; font-size: 18px; font-weight: 600; color: #2c3e50; }
 .view-all { background: none; border: none; color: #4a6444; font-size: 14px; cursor: pointer; font-weight: 500; }
 
-/* 카메라 선택 모달 */
-.camera-choice-overlay { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 999; display: flex; align-items: flex-end; justify-content: center; }
-.camera-choice-sheet { width: 100%; max-width: 480px; background: #ffffff; border-radius: 16px 16px 0 0; padding: 16px 20px 24px; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.15); }
-.camera-choice-title { font-size: 14px; font-weight: 600; color: #2c3e50; margin-bottom: 12px; text-align: center; }
-.camera-choice-btn { width: 100%; padding: 12px; margin-bottom: 8px; border-radius: 10px; border: none; background: #eef2e6; color: #2c3e50; font-size: 14px; font-weight: 500; cursor: pointer; }
-.camera-choice-btn:active { background: #dfe7d6; }
-.camera-choice-cancel { width: 100%; padding: 10px; margin-top: 4px; border-radius: 10px; border: none; background: #ffffff; color: #7f8c8d; font-size: 13px; cursor: pointer; }
+/* 카메라 선택 모달 - 중앙 배치로 수정 */
+.camera-choice-overlay { 
+  position: fixed; 
+  inset: 0; 
+  background: rgba(0, 0, 0, 0.5); 
+  z-index: 999; 
+  display: flex; 
+  align-items: center; 
+  justify-content: center; 
+  padding: 20px;
+}
+
+.camera-choice-sheet { 
+  width: 100%; 
+  max-width: 360px; 
+  background: #ffffff; 
+  border-radius: 16px; 
+  padding: 24px 20px; 
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.camera-choice-title { 
+  font-size: 16px; 
+  font-weight: 600; 
+  color: #2c3e50; 
+  margin-bottom: 16px; 
+  text-align: center; 
+}
+
+.camera-choice-btn { 
+  width: 100%; 
+  padding: 14px; 
+  margin-bottom: 10px; 
+  border-radius: 12px; 
+  border: none; 
+  background: #eef2e6; 
+  color: #2c3e50; 
+  font-size: 15px; 
+  font-weight: 500; 
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.camera-choice-btn:hover {
+  background: #dfe7d6;
+  transform: translateY(-1px);
+}
+
+.camera-choice-btn:active { 
+  background: #d0dac7;
+  transform: translateY(0);
+}
+
+.camera-choice-cancel { 
+  width: 100%; 
+  padding: 12px; 
+  margin-top: 4px; 
+  border-radius: 12px; 
+  border: 1px solid #e0e0e0; 
+  background: #ffffff; 
+  color: #7f8c8d; 
+  font-size: 14px; 
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.camera-choice-cancel:hover {
+  background: #f8f9fa;
+}
+
+.camera-choice-cancel:active {
+  background: #f0f0f0;
+}
 
 /* 식물 카드 스크롤 */
 .plant-scroll { display: flex; align-items: center; overflow-x: auto; gap: 16px; padding: 0 20px 20px; scroll-behavior: smooth; }
