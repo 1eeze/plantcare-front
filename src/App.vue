@@ -26,24 +26,37 @@ import { supabase } from '@/utils/supabase'
 import SplashScreen from '@/components/common/SplashScreen.vue'
 import ChatPopup from '@/components/chat/ChatPopup.vue'
 import { chatStore } from '@/utils/chatStore'
+import { useNotificationSystem } from '@/composables/useNotificationSystem'
+import { notificationStore } from '@/utils/notificationStore'
 
 const initialLoading = ref(true)
 const router = useRouter()
+const { initNotifications } = useNotificationSystem()
 
 onMounted(async () => {
-  // 앱 켜지자마자 세션 확인
+  // 1. 초기 진입 시 세션 체크
   const { data: { session } } = await supabase.auth.getSession()
-  const isLoggedIn = !!session
-
-  if (!isLoggedIn) {
-    // 로그인 안 되어있으면 로그인 화면으로
-    router.replace({ name: 'LoginPage' })
+  
+  if (session) {
+    console.log("✅ [App] 초기 세션 확인됨 -> 알림 연결")
+    initNotifications()
   } else {
-    // 로그인 되어있으면 홈 화면으로 (혹은 마지막 페이지 유지)
-    if (router.currentRoute.value.name === 'LoginPage') {
-      router.replace({ name: 'HomePage' }) 
-    }
+    router.replace({ name: 'LoginPage' })
   }
+
+  // 2. 로그인 상태 변경 감지 (중복 실행 방지 로직 추가)
+  supabase.auth.onAuthStateChange((event, session) => {
+    // console.log(`[Auth Debug] 이벤트: ${event}`) // 디버깅 필요시 주석 해제
+
+    if (event === 'SIGNED_IN' && session) {
+      // 로그인 직후에만 연결 시도
+      initNotifications()
+    } else if (event === 'SIGNED_OUT') {
+      console.log("👋 로그아웃 -> 알림 카운트 초기화")
+      notificationStore.setChatCount(0)
+      notificationStore.setAlertCount(0)
+    }
+  })
 
   setTimeout(() => {
     initialLoading.value = false
@@ -52,13 +65,13 @@ onMounted(async () => {
 </script>
 
 <style>
+/* 기존 스타일 그대로 유지 */
 #app {
   font-family: Avenir, Helvetica, Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-align: center;
   color: #2c3e50;
-  /* 스플래시를 화면 꽉 채우기 위해 margin-top: 0 적용 */
   margin-top: 0;
   min-height: 100vh;
 }
@@ -74,7 +87,6 @@ body {
   min-height: 100vh;
 }
 
-/* 업로드 모달 스타일 */
 .upload-modal {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
@@ -125,13 +137,12 @@ body {
   position: fixed;
   bottom: 0;
   right: 0;
-  z-index: 9999; /* 가장 위에 표시 */
-  pointer-events: none; /* 컨테이너 자체는 클릭 통과 */
+  z-index: 9999;
+  pointer-events: none;
   width: 100%;
   height: 0;
 }
 
-/* ChatPopup 내부에서 pointer-events: auto로 복구되어 있음 */
 .global-chat-container > * {
   pointer-events: auto;
 }

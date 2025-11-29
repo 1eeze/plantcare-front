@@ -111,7 +111,12 @@
       <div class="header-actions">
         <button class="notification-btn" @click="openNotifications" :class="{ 'has-notification': notificationCount > 0 }">
           🔔
-          <span v-if="notificationCount > 0" class="notification-badge">{{ notificationCount }}</span>
+        <span 
+            v-if="notificationStore.totalUnreadCount > 0" 
+            class="notification-badge"
+          >
+            {{ notificationStore.totalUnreadCount > 99 ? '99+' : notificationStore.totalUnreadCount }}
+          </span>
         </button>
         <button class="camera-btn" @click="openCamera" aria-label="카메라 열기">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="#4a6444">
@@ -236,6 +241,7 @@
 import { ref, onMounted, onUnmounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
+import { notificationStore } from '@/utils/notificationStore'
 import plant_pic from '../../assets/plant.png'
 
 const router = useRouter()
@@ -1135,6 +1141,10 @@ async function ensureDevSession() {
   }
 }
 
+const goToNotification = () => {
+  router.push('/notification')
+}
+
 // 라이프사이클
 onMounted(async () => {
   await ensureDevSession()
@@ -1229,21 +1239,36 @@ const getOverallStatusClass = (p) => p.needsAttention ? 'status-warning' : 'stat
   padding: 8px;
 }
 
+.notification-container {
+  position: relative;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-right: 10px;
+}
+
+.bell-icon {
+  font-size: 24px;
+}
+
 .notification-badge {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  background: #ff4757;
+  top: -2px;
+  right: -2px;
+  background-color: #ff4757;
   color: white;
-  border-radius: 50%;
-  width: 16px;
-  height: 16px;
   font-size: 10px;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: bold;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  border: 2px solid #f7f6ed;
+  padding: 1px;
+  z-index: 10;
 }
 
 /* 날씨 카드 */
