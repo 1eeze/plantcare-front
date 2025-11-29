@@ -249,6 +249,18 @@ const userSearchResults = ref([])
 const isSearchingUsers = ref(false)
 let searchTimeout = null
 
+const markAllNotificationsAsRead = async () => {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  // 내 알림 중 안 읽은 것(read: false) -> 읽음(read: true)
+  await supabase
+    .from('notifications')
+    .update({ read: true })
+    .eq('user_id', user.id)
+    .eq('read', false)
+}
+
 const toggleHeaderSearch = () => {
   isHeaderSearchActive.value = !isHeaderSearchActive.value
   if (isHeaderSearchActive.value) nextTick(() => headerSearchInput.value?.focus())
@@ -501,6 +513,7 @@ onMounted(async () => {
   await Promise.all([loadChatList(), loadNotifications()])
   subscribeToMessageChanges()
   subscribeToNotificationChanges()
+  markAllNotificationsAsRead()
 })
 
 onBeforeUnmount(() => {
@@ -510,6 +523,62 @@ onBeforeUnmount(() => {
 
 const setActiveTab = (tab) => { activeTab.value = tab; isHeaderSearchActive.value = false; headerSearchKeyword.value = '' }
 const openChat = (chat) => { router.push(`/chat/${chat.id}`) }
+
+const leaveChat = async (partnerId) => {
+  if (!confirm('채팅방을 나가시겠습니까? 대화 내용이 사라집니다.')) return
+
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+
+  // 상대방 ID가 'deleted'인 경우 (이미 탈퇴해서 ID가 없는 경우)
+  if (partnerId === 'deleted') {
+    console.log("상대방 정보가 없는(deleted) 채팅방입니다. 관련 메시지를 정리합니다.")
+    
+    // 내 ID가 포함되어 있으면서, 상대방 ID가 NULL인 '유령 메시지'들을 찾아서 삭제
+    const { error: nullError } = await supabase
+      .from('messages')
+      .delete()
+      .or(`and(sender_id.eq.${user.id},receiver_id.is.null),and(sender_id.is.null,receiver_id.eq.${user.id})`)
+
+    if (nullError) {
+      console.error("메시지 정리 실패:", nullError)
+      alert("오류가 발생했습니다.")
+      return
+    }
+
+    // 목록에서 즉시 제거
+    chatList.value = chatList.value.filter(chat => chat.id !== 'deleted')
+    return
+  }
+
+  // 1. 정상적인 방법 (채팅 숨김 처리) 시도
+  const { error: hideError } = await supabase
+    .from('chat_settings')
+    .upsert({ 
+      user_id: user.id, 
+      partner_id: partnerId, 
+      is_hidden: true 
+    })
+
+  // 2. 실패 시 (상대방이 탈퇴했지만 ID는 남아있는 경우 등) -> 강제 삭제
+  if (hideError) {
+    console.log("숨김 처리 실패. 메시지 강제 삭제를 시도합니다.")
+    
+    const { error: deleteError } = await supabase
+      .from('messages')
+      .delete()
+      .or(`and(sender_id.eq.${user.id},receiver_id.eq.${partnerId}),and(sender_id.eq.${partnerId},receiver_id.eq.${user.id})`)
+    
+    if (deleteError) {
+      console.error("메시지 삭제 실패:", deleteError)
+      alert("오류가 발생했습니다.")
+      return
+    }
+  }
+
+  // 3. 목록에서 제거
+  chatList.value = chatList.value.filter(chat => chat.id !== partnerId)
+}
 
 const handleNotificationClick = async (notification) => {
   try {
