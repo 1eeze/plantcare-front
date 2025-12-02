@@ -77,6 +77,50 @@
         </div>
       </div>
 
+      <!-- 센서 데이터 그래프 -->
+      <div v-if="hasFullSensorData" class="sensor-chart-section">
+        <h3 class="chart-section-title">📊 센서 데이터 추이</h3>
+
+        <!-- 습도 차트 -->
+        <div class="chart-card">
+          <h4>💧 대기 습도</h4>
+          <apexchart
+            v-if="humidityChartData.length > 0"
+            type="line"
+            height="200"
+            :options="getChartOptions('습도 (%)', '#3498db')"
+            :series="[{ name: '대기 습도', data: humidityChartData }]"
+          ></apexchart>
+          <p v-else class="no-chart-data">데이터가 없습니다</p>
+        </div>
+
+        <!-- 조도 차트 -->
+        <div class="chart-card">
+          <h4>☀️ 조도</h4>
+          <apexchart
+            v-if="lightChartData.length > 0"
+            type="line"
+            height="200"
+            :options="getChartOptions('조도 (lux)', '#f39c12')"
+            :series="[{ name: '조도', data: lightChartData }]"
+          ></apexchart>
+          <p v-else class="no-chart-data">데이터가 없습니다</p>
+        </div>
+
+        <!-- 온도 차트 -->
+        <div class="chart-card">
+          <h4>🌡️ 온도</h4>
+          <apexchart
+            v-if="tempChartData.length > 0"
+            type="line"
+            height="200"
+            :options="getChartOptions('온도 (°C)', '#e74c3c')"
+            :series="[{ name: '온도', data: tempChartData }]"
+          ></apexchart>
+          <p v-else class="no-chart-data">데이터가 없습니다</p>
+        </div>
+      </div>
+
       <div class="tags" v-if="post.tags && post.tags.length">
         <span v-for="tag in post.tags" :key="tag" class="tag">#{{ tag }}</span>
       </div>
@@ -132,6 +176,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { supabase } from '@/utils/supabase'
 import Comment from './Comment.vue'
 import defaultAvatar from '@/assets/user-profile.png'
+import VueApexCharts from 'vue3-apexcharts'
 
 const route = useRoute()
 const router = useRouter()
@@ -153,6 +198,13 @@ const sensorStatus = ref({
   temp: null,
   humidity: null,
   light: null
+})
+
+// 센서 데이터 배열 (그래프용)
+const sensorDataArrays = ref({
+  humidity: [],
+  temp: [],
+  light: []
 })
 
 const isOwner = computed(
@@ -423,6 +475,79 @@ const qualityConfidenceDisplay = computed(() => {
   return computeQualityConfidence(sensorStatus.value)
 })
 
+// 센서 그래프 데이터
+const hasFullSensorData = computed(() => {
+  return sensorDataArrays.value.humidity.length > 0 ||
+         sensorDataArrays.value.temp.length > 0 ||
+         sensorDataArrays.value.light.length > 0
+})
+
+const humidityChartData = computed(() => {
+  return sensorDataArrays.value.humidity.map((item, index) => ({
+    x: index + 1,
+    y: typeof item === 'number' ? item : (item?.value ?? null)
+  })).filter(d => d.y !== null)
+})
+
+const lightChartData = computed(() => {
+  return sensorDataArrays.value.light.map((item, index) => ({
+    x: index + 1,
+    y: typeof item === 'number' ? item : (item?.value ?? null)
+  })).filter(d => d.y !== null)
+})
+
+const tempChartData = computed(() => {
+  return sensorDataArrays.value.temp.map((item, index) => ({
+    x: index + 1,
+    y: typeof item === 'number' ? item : (item?.value ?? null)
+  })).filter(d => d.y !== null)
+})
+
+const getChartOptions = (yAxisLabel, color) => {
+  return {
+    chart: {
+      type: 'line',
+      toolbar: { show: false },
+      zoom: { enabled: false }
+    },
+    dataLabels: { enabled: false },
+    stroke: {
+      curve: 'smooth',
+      width: 3,
+      colors: [color]
+    },
+    xaxis: {
+      title: { text: '측정 순서' },
+      labels: {
+        style: {
+          colors: '#7f8c8d',
+          fontSize: '12px'
+        }
+      }
+    },
+    yaxis: {
+      title: { text: yAxisLabel },
+      labels: {
+        style: {
+          colors: '#7f8c8d',
+          fontSize: '12px'
+        }
+      }
+    },
+    tooltip: {
+      y: {
+        formatter: (value) => {
+          return value?.toFixed(1) || '-'
+        }
+      }
+    },
+    grid: {
+      borderColor: '#f0f0f0'
+    },
+    colors: [color]
+  }
+}
+
 const QUALITY_API_URL = 'https://detectbug-740384497388.asia-southeast1.run.app/predict/quality'
 
 const ensurePlantId = async () => {
@@ -672,20 +797,60 @@ const loadSensorStatus = async (userId, title) => {
     }
     const sensorData = data || {}
 
-    const latestVal = (arr) => {
-      if (!arr) return null
-      if (Array.isArray(arr) && arr.length > 0) {
-        const last = arr[arr.length - 1]
-        return typeof last === 'number' ? last : (last?.value ?? null)
+    console.log('[센서 PostDetail] plant_id:', plantId)
+    console.log('[센서 PostDetail] raw sensor data:', sensorData)
+
+    const latestVal = (arr, fieldName) => {
+      if (!arr) {
+        console.log(`  ${fieldName}: null (배열 없음)`)
+        return null
       }
+      if (!Array.isArray(arr) || arr.length === 0) {
+        console.log(`  ${fieldName}: null (빈 배열)`)
+        return null
+      }
+
+      // 배열의 마지막 요소 (최신 데이터)
+      const last = arr[arr.length - 1]
+      console.log(`  ${fieldName} last element:`, last)
+
+      if (!last) {
+        console.log(`  ${fieldName}: null (요소 없음)`)
+        return null
+      }
+
+      // 객체 형태 {value, timestamp}인 경우
+      if (typeof last === 'object' && last.value !== undefined) {
+        console.log(`  ${fieldName}: ${last.value} (객체에서 추출)`)
+        return last.value
+      }
+
+      // 단순 숫자인 경우
+      if (typeof last === 'number') {
+        console.log(`  ${fieldName}: ${last} (숫자)`)
+        return last
+      }
+
+      console.log(`  ${fieldName}: null (알 수 없는 형식)`)
       return null
     }
 
+    // 최신 값 설정
     sensorStatus.value = {
-      humidity: latestVal(sensorData.humidity),
-      temp: latestVal(sensorData.temp),
-      light: latestVal(sensorData.light)
+      humidity: latestVal(sensorData.humidity, 'humidity'),
+      temp: latestVal(sensorData.temp, 'temp'),
+      light: latestVal(sensorData.light, 'light')
     }
+
+    // 전체 배열 저장 (그래프용)
+    sensorDataArrays.value = {
+      humidity: Array.isArray(sensorData.humidity) ? sensorData.humidity : [],
+      temp: Array.isArray(sensorData.temp) ? sensorData.temp : [],
+      light: Array.isArray(sensorData.light) ? sensorData.light : []
+    }
+
+    console.log('[센서 PostDetail] 최종 sensorStatus:', sensorStatus.value)
+    console.log('[센서 PostDetail] 배열 데이터:', sensorDataArrays.value)
 
     if (sensorQualityGrade.value === '-') {
       sensorQualityGrade.value = computeQualityFromSensor(sensorStatus.value)
@@ -760,6 +925,48 @@ onMounted(fetchPost)
 .sensor-chip.quality { background: linear-gradient(135deg, #fff3e0, #ffe9d6); border-color: #ffd2a8; }
 .sensor-chip .measure-btn { margin-left: 6px; border: none; background: #568265; color: white; padding: 4px 8px; border-radius: 8px; font-size: 12px; cursor: pointer; }
 .sensor-chip .measure-btn:hover { background: #456852; }
+
+/* 센서 그래프 섹션 */
+.sensor-chart-section {
+  margin: 24px 0;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 12px;
+}
+
+.chart-section-title {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  font-weight: 700;
+  color: #2c3e50;
+}
+
+.chart-card {
+  background: white;
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.chart-card:last-child {
+  margin-bottom: 0;
+}
+
+.chart-card h4 {
+  margin: 0 0 12px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+.no-chart-data {
+  text-align: center;
+  padding: 40px 20px;
+  color: #7f8c8d;
+  font-size: 14px;
+  margin: 0;
+}
 
 .tags { display: flex; gap: 8px; flex-wrap: wrap; }
 .tag { background: #f0f8f4; color: #568265; padding: 4px 10px; border-radius: 12px; font-size: 12px; }

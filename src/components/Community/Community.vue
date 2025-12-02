@@ -503,18 +503,30 @@ export default {
 
     async persistQualityGrade(post, grade, confidence) {
       if (!post || !post.id || !grade) return
+
+      // 본인의 게시글인 경우에만 저장
+      if (!this.currentUser || post.user_id !== this.currentUser.id) {
+        console.log('[Community] 본인 게시글이 아니므로 품질 저장 스킵')
+        return
+      }
+
       try {
         // 게시글 테이블에 반영
-        await supabase
+        const { error: postError } = await supabase
           .from('posts')
           .update({
             quality_grade: grade,
             quality_confidence: confidence ?? null
           })
           .eq('id', post.id)
+          .eq('user_id', this.currentUser.id)
 
-        // User_Plants.message에도 저장 (본인 글인 경우에만)
-        if (this.currentUser && post.user_id === this.currentUser.id && post.plant_id) {
+        if (postError) {
+          console.error('posts 테이블 업데이트 실패:', postError)
+        }
+
+        // User_Plants.message에도 저장
+        if (post.plant_id) {
           const { data: current } = await supabase
             .from('User_Plants')
             .select('message')
@@ -529,11 +541,15 @@ export default {
               updated_at: new Date().toISOString()
             }
           }
-          await supabase
+          const { error: plantError } = await supabase
             .from('User_Plants')
             .update({ message: nextMessage })
             .eq('id', post.plant_id)
             .eq('user_id', this.currentUser.id)
+
+          if (plantError) {
+            console.error('User_Plants 테이블 업데이트 실패:', plantError)
+          }
         }
       } catch (err) {
         console.error('품질 등급 영구 저장 실패:', err)
@@ -761,7 +777,12 @@ export default {
       })
 
       const plantIds = slice.map(p => p.plant_id).filter(Boolean)
+      console.log('[Community] 전체 posts 수:', slice.length)
+      console.log('[Community] plant_id가 있는 posts 수:', plantIds.length)
+      console.log('[Community] plant_ids:', plantIds)
+
       if (plantIds.length === 0) {
+        console.log('[Community] plant_id가 없어서 센서 데이터 조회 스킵')
         for (const item of photoPredictQueue) {
           await this.analyzeQualityFromPhoto(item.post, item.photoUrl)
         }
@@ -797,31 +818,79 @@ export default {
         }
         const sensorMap = {}
         if (sensorRows) {
+          console.log('=== Community 센서 데이터 파싱 ===')
+          console.log('센서 데이터 rows:', sensorRows)
+
           sensorRows.forEach(row => {
-            const latestVal = (arr) => {
-              if (!arr) return null
-              if (Array.isArray(arr) && arr.length) {
-                const last = arr[arr.length - 1]
-                return typeof last === 'number' ? last : (last?.value ?? null)
+            console.log(`plant_id ${row.plant_id}:`, {
+              humidity: row.humidity,
+              temp: row.temp,
+              light: row.light
+            })
+
+            const latestVal = (arr, fieldName) => {
+              if (!arr) {
+                console.log(`  ${fieldName}: null (배열 없음)`)
+                return null
               }
+              if (!Array.isArray(arr) || arr.length === 0) {
+                console.log(`  ${fieldName}: null (빈 배열)`)
+                return null
+              }
+
+              // 배열의 마지막 요소 (최신 데이터)
+              const latest = arr[arr.length - 1]
+              console.log(`  ${fieldName} latest (마지막 요소):`, latest)
+
+              if (!latest) {
+                console.log(`  ${fieldName}: null (요소 없음)`)
+                return null
+              }
+
+              // 객체 형태 {value, timestamp}인 경우
+              if (typeof latest === 'object' && latest.value !== undefined) {
+                console.log(`  ${fieldName}: ${latest.value} (객체에서 추출)`)
+                return latest.value
+              }
+
+              // 단순 숫자인 경우
+              if (typeof latest === 'number') {
+                console.log(`  ${fieldName}: ${latest} (숫자)`)
+                return latest
+              }
+
+              console.log(`  ${fieldName}: null (알 수 없는 형식)`)
               return null
             }
-            sensorMap[row.plant_id] = {
-              humidity: latestVal(row.humidity),
-              temp: latestVal(row.temp),
-              light: latestVal(row.light)
+
+            const result = {
+              humidity: latestVal(row.humidity, 'humidity'),
+              temp: latestVal(row.temp, 'temp'),
+              light: latestVal(row.light, 'light')
             }
+
+            console.log(`  최종 결과:`, result)
+            sensorMap[row.plant_id] = result
           })
         }
 
         photoPredictQueue = []
+
+        console.log('[Community] sensorMap 내용:', sensorMap)
+        console.log('[Community] qualityMap 내용:', qualityMap)
 
         slice.forEach(post => {
           const pid = post.plant_id
           const photoUrl = post.image || (pid ? photoMap[pid] : null)
 
           if (pid) {
-            post.sensorStatus = sensorMap[pid] || { humidity: null, temp: null, light: null }
+            const sensorData = sensorMap[pid]
+            console.log(`[Community] post ${post.id} (plant_id: ${pid}) 센서 데이터:`, sensorData)
+
+            post.sensorStatus = sensorData || { humidity: null, temp: null, light: null }
+
+            console.log(`[Community] post ${post.id} sensorStatus 설정됨:`, post.sensorStatus)
+
             if (!post.sensorQuality || post.sensorQuality === '-') {
               post.sensorQuality = qualityMap[pid] || this.computeQuality(post.sensorStatus)
             }
@@ -832,6 +901,8 @@ export default {
                 post.quality_confidence = this.computeQualityConfidence(post.sensorStatus)
               }
             }
+          } else {
+            console.log(`[Community] post ${post.id} plant_id 없음`)
           }
 
           const gradeMissing = !post.quality_grade || post.quality_grade === '-' || post.quality_grade === null
@@ -847,6 +918,10 @@ export default {
         for (const item of photoPredictQueue) {
           await this.analyzeQualityFromPhoto(item.post, item.photoUrl)
         }
+
+        // Vue 반응성 트리거: posts 배열을 새로 할당
+        this.posts = [...this.posts]
+        console.log('[Community] Vue 반응성 트리거 완료')
       } catch (err) {
         console.error('센서 상태 일괄 연동 실패:', err)
         slice.forEach(post => { post.sensorStatus = { humidity: null, temp: null, light: null } })
