@@ -325,10 +325,10 @@
       <div class="care-section">
         <h3 class="section-title">식물 관리</h3>
         <div class="care-actions">
-          <!-- <button class="care-action-btn" @click="waterPlant">
+          <button class="care-action-btn" @click="waterPlant">
             <span class="action-icon">💧</span>
             <span class="action-text">물주기</span>
-          </button> -->
+          </button>
           <button class="care-action-btn" @click="analyzePlant" :disabled="analyzing">
             <span class="action-icon">{{ analyzing ? '🔄' : '🔬' }}</span>
             <span class="action-text">{{ analyzing ? '분석 중...' : 'AI 분석' }}</span>
@@ -455,7 +455,7 @@ const aiAnalysisResult = ref(null)
 
 // 최근 관리 기록
 const recentHistory = ref([
-  // { id: 1, action: '물주기 완료', icon: '💧', date: new Date().toISOString() },
+  { id: 1, action: '물주기 완료', icon: '💧', date: new Date().toISOString() },
   { id: 2, action: 'AI 분석 완료', icon: '🔬', date: new Date(Date.now() - 86400000).toISOString() },
 ])
 
@@ -1045,9 +1045,37 @@ const goBack = () => {
   router.push('/')
 }
 
-// const waterPlant = () => {
-//  alert('💧 물주기 기능은 개발 중입니다!')
-// }
+const waterPlant = async () => {
+  if (!plant.value || !plantId) {
+    alert('❌ 식물 정보를 찾을 수 없습니다.')
+    return
+  }
+
+  try {
+    // User_Plants의 is_watering을 true로 변경
+    const { error } = await supabase
+      .from('User_Plants')
+      .update({ is_watering: true })
+      .eq('id', plantId)
+
+    if (error) {
+      console.error('물주기 상태 업데이트 실패:', error)
+      alert('❌ 물주기 상태 업데이트에 실패했습니다.')
+      return
+    }
+
+    // 로컬 상태 업데이트
+    if (plant.value) {
+      plant.value.is_watering = true
+    }
+
+    alert('💧 물주기가 시작되었습니다!')
+    console.log('[물주기] is_watering = true로 변경됨, plant_id:', plantId)
+  } catch (err) {
+    console.error('물주기 오류:', err)
+    alert('❌ 물주기 처리 중 오류가 발생했습니다.')
+  }
+}
 
 const editPlant = () => {
   router.push(`/edit-plant/${plantId}`)
